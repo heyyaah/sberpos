@@ -31,7 +31,7 @@ device_states = {}  # terminal_id -> {state, amount, last_update}
 auto_reset_timers = {}  # terminal_id -> timer
 last_seen = {}  # terminal_id -> datetime последнего запроса
 
-TERMINALS_FILE = 'terminals_db.json'
+TERMINALS_FILE = os.environ.get('TERMINALS_FILE', '/data/terminals_db.json') if os.path.exists('/data') else 'terminals_db.json'
 TERMINAL_TIMEOUT = 10  # секунд без активности для отмены оплаты
 DATABASE_URL = os.environ.get('DATABASE_URL')  # PostgreSQL URL от Render
 
