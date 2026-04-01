@@ -11,8 +11,16 @@ import os
 import threading
 import time
 from datetime import datetime, timedelta
-import psycopg2
-from psycopg2.extras import Json
+
+# Пробуем импортировать psycopg2, если не получается - работаем без БД
+try:
+    import psycopg2
+    from psycopg2.extras import Json
+    PSYCOPG2_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  psycopg2 не доступен: {e}")
+    print("⚠️  Будет использоваться только файловое хранилище")
+    PSYCOPG2_AVAILABLE = False
 
 app = Flask(__name__)
 
@@ -29,7 +37,7 @@ DATABASE_URL = os.environ.get('DATABASE_URL')  # PostgreSQL URL от Render
 
 def get_db_connection():
     """Получить подключение к БД"""
-    if DATABASE_URL:
+    if DATABASE_URL and PSYCOPG2_AVAILABLE:
         # Render использует postgres://, но psycopg2 требует postgresql://
         db_url = DATABASE_URL.replace('postgres://', 'postgresql://')
         return psycopg2.connect(db_url)
@@ -37,8 +45,8 @@ def get_db_connection():
 
 def init_db():
     """Инициализация таблицы терминалов"""
-    if not DATABASE_URL:
-        print("⚠️  DATABASE_URL не найден, используется файловое хранилище")
+    if not DATABASE_URL or not PSYCOPG2_AVAILABLE:
+        print("⚠️  DATABASE_URL не найден или psycopg2 недоступен, используется файловое хранилище")
         return
     
     try:
@@ -88,7 +96,7 @@ def load_terminals():
     global terminals
     
     # Пробуем загрузить из PostgreSQL
-    if DATABASE_URL:
+    if DATABASE_URL and PSYCOPG2_AVAILABLE:
         try:
             conn = get_db_connection()
             cur = conn.cursor()
@@ -117,7 +125,7 @@ def load_terminals():
 def save_terminals():
     """Сохранение терминалов в БД или файл"""
     # Сохраняем в PostgreSQL
-    if DATABASE_URL:
+    if DATABASE_URL and PSYCOPG2_AVAILABLE:
         try:
             conn = get_db_connection()
             cur = conn.cursor()
@@ -694,7 +702,7 @@ def delete_terminal(session):
     del terminals[terminal_id]
     
     # Удаляем из БД если используется
-    if DATABASE_URL:
+    if DATABASE_URL and PSYCOPG2_AVAILABLE:
         try:
             conn = get_db_connection()
             cur = conn.cursor()
