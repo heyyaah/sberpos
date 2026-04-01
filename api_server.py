@@ -12,15 +12,16 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-# Пробуем импортировать psycopg2, если не получается - работаем без БД
+# Пробуем импортировать psycopg3, если не получается - работаем без БД
 try:
-    import psycopg2
-    from psycopg2.extras import Json
-    PSYCOPG2_AVAILABLE = True
+    import psycopg
+    from psycopg.types.json import Jsonb
+    PSYCOPG_AVAILABLE = True
+    print("✅ psycopg3 загружен успешно")
 except ImportError as e:
-    print(f"⚠️  psycopg2 не доступен: {e}")
+    print(f"⚠️  psycopg не доступен: {e}")
     print("⚠️  Будет использоваться только файловое хранилище")
-    PSYCOPG2_AVAILABLE = False
+    PSYCOPG_AVAILABLE = False
 
 app = Flask(__name__)
 
@@ -37,16 +38,16 @@ DATABASE_URL = os.environ.get('DATABASE_URL')  # PostgreSQL URL от Render
 
 def get_db_connection():
     """Получить подключение к БД"""
-    if DATABASE_URL and PSYCOPG2_AVAILABLE:
-        # Render использует postgres://, но psycopg2 требует postgresql://
+    if DATABASE_URL and PSYCOPG_AVAILABLE:
+        # Render использует postgres://, но psycopg требует postgresql://
         db_url = DATABASE_URL.replace('postgres://', 'postgresql://')
-        return psycopg2.connect(db_url)
+        return psycopg.connect(db_url)
     return None
 
 def init_db():
     """Инициализация таблицы терминалов"""
-    if not DATABASE_URL or not PSYCOPG2_AVAILABLE:
-        print("⚠️  DATABASE_URL не найден или psycopg2 недоступен, используется файловое хранилище")
+    if not DATABASE_URL or not PSYCOPG_AVAILABLE:
+        print("⚠️  DATABASE_URL не найден или psycopg недоступен, используется файловое хранилище")
         return
     
     try:
@@ -96,7 +97,7 @@ def load_terminals():
     global terminals
     
     # Пробуем загрузить из PostgreSQL
-    if DATABASE_URL and PSYCOPG2_AVAILABLE:
+    if DATABASE_URL and PSYCOPG_AVAILABLE:
         try:
             conn = get_db_connection()
             cur = conn.cursor()
@@ -125,7 +126,7 @@ def load_terminals():
 def save_terminals():
     """Сохранение терминалов в БД или файл"""
     # Сохраняем в PostgreSQL
-    if DATABASE_URL and PSYCOPG2_AVAILABLE:
+    if DATABASE_URL and PSYCOPG_AVAILABLE:
         try:
             conn = get_db_connection()
             cur = conn.cursor()
@@ -135,7 +136,7 @@ def save_terminals():
                     VALUES (%s, %s, CURRENT_TIMESTAMP)
                     ON CONFLICT (terminal_id) 
                     DO UPDATE SET data = %s, updated_at = CURRENT_TIMESTAMP
-                ''', (terminal_id, Json(data), Json(data)))
+                ''', (terminal_id, Jsonb(data), Jsonb(data)))
             conn.commit()
             cur.close()
             conn.close()
@@ -702,7 +703,7 @@ def delete_terminal(session):
     del terminals[terminal_id]
     
     # Удаляем из БД если используется
-    if DATABASE_URL and PSYCOPG2_AVAILABLE:
+    if DATABASE_URL and PSYCOPG_AVAILABLE:
         try:
             conn = get_db_connection()
             cur = conn.cursor()
