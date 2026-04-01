@@ -22,7 +22,7 @@ auto_reset_timers = {}  # terminal_id -> timer
 last_seen = {}  # terminal_id -> datetime последнего запроса
 
 TERMINALS_FILE = 'terminals_db.json'
-TERMINAL_TIMEOUT = 2  # секунд без активности для отмены оплаты
+TERMINAL_TIMEOUT = 10  # секунд без активности для отмены оплаты
 
 def auto_reset_to_idle(terminal_id, delay=5):
     """Автоматически сбросить терминал в idle через delay секунд"""
