@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+.DS_Store
+terminals.json
+terminals_db.json
+*.apk
+*.jar
+apktool_out/

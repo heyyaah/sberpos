@@ -1,0 +1,26 @@
+services:
+  # API Server
+  - type: web
+    name: sberpos-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python api_server.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PORT
+        value: 5001
+    
+  # Telegram Bot
+  - type: web
+    name: sberpos-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: BOT_TOKEN
+        sync: false
+      - key: BASE_URL
+        value: https://sberpos-api.onrender.com
