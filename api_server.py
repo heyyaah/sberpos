@@ -11,6 +11,8 @@ import os
 import threading
 import time
 from datetime import datetime, timedelta
+import psycopg2
+from psycopg2.extras import Json
 
 app = Flask(__name__)
 
@@ -23,6 +25,38 @@ last_seen = {}  # terminal_id -> datetime последнего запроса
 
 TERMINALS_FILE = 'terminals_db.json'
 TERMINAL_TIMEOUT = 10  # секунд без активности для отмены оплаты
+DATABASE_URL = os.environ.get('DATABASE_URL')  # PostgreSQL URL от Render
+
+def get_db_connection():
+    """Получить подключение к БД"""
+    if DATABASE_URL:
+        # Render использует postgres://, но psycopg2 требует postgresql://
+        db_url = DATABASE_URL.replace('postgres://', 'postgresql://')
+        return psycopg2.connect(db_url)
+    return None
+
+def init_db():
+    """Инициализация таблицы терминалов"""
+    if not DATABASE_URL:
+        print("⚠️  DATABASE_URL не найден, используется файловое хранилище")
+        return
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS terminals (
+                terminal_id VARCHAR(10) PRIMARY KEY,
+                data JSONB NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("✅ База данных инициализирована")
+    except Exception as e:
+        print(f"❌ Ошибка инициализации БД: {e}")
 
 def auto_reset_to_idle(terminal_id, delay=5):
     """Автоматически сбросить терминал в idle через delay секунд"""
@@ -50,8 +84,25 @@ def auto_reset_to_idle(terminal_id, delay=5):
     auto_reset_timers[terminal_id] = timer
 
 def load_terminals():
-    """Загрузка терминалов из файла"""
+    """Загрузка терминалов из БД или файла"""
     global terminals
+    
+    # Пробуем загрузить из PostgreSQL
+    if DATABASE_URL:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('SELECT terminal_id, data FROM terminals')
+            rows = cur.fetchall()
+            terminals = {row[0]: row[1] for row in rows}
+            cur.close()
+            conn.close()
+            print(f"📂 Загружено {len(terminals)} терминалов из PostgreSQL")
+            return
+        except Exception as e:
+            print(f"❌ Ошибка загрузки из БД: {e}")
+    
+    # Fallback на файл
     try:
         with open(TERMINALS_FILE, 'r', encoding='utf-8') as f:
             terminals = json.load(f)
@@ -64,7 +115,27 @@ def load_terminals():
         terminals = {}
 
 def save_terminals():
-    """Сохранение терминалов в файл"""
+    """Сохранение терминалов в БД или файл"""
+    # Сохраняем в PostgreSQL
+    if DATABASE_URL:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            for terminal_id, data in terminals.items():
+                cur.execute('''
+                    INSERT INTO terminals (terminal_id, data, updated_at)
+                    VALUES (%s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (terminal_id) 
+                    DO UPDATE SET data = %s, updated_at = CURRENT_TIMESTAMP
+                ''', (terminal_id, Json(data), Json(data)))
+            conn.commit()
+            cur.close()
+            conn.close()
+            return
+        except Exception as e:
+            print(f"❌ Ошибка сохранения в БД: {e}")
+    
+    # Fallback на файл
     try:
         with open(TERMINALS_FILE, 'w', encoding='utf-8') as f:
             json.dump(terminals, f, ensure_ascii=False, indent=2)
@@ -108,6 +179,9 @@ def check_terminal_timeouts():
                 # Удаляем из отслеживания
                 del last_seen[terminal_id]
                 print(f"🗑️  [TIMEOUT] {terminal_id}: removed from tracking")
+
+# Инициализация БД
+init_db()
 
 # Загрузка терминалов при старте
 load_terminals()
@@ -619,6 +693,18 @@ def delete_terminal(session):
     # Удаляем терминал
     del terminals[terminal_id]
     
+    # Удаляем из БД если используется
+    if DATABASE_URL:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('DELETE FROM terminals WHERE terminal_id = %s', (terminal_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            print(f"❌ Ошибка удаления из БД: {e}")
+    
     # Удаляем из device_states
     if terminal_id in device_states:
         del device_states[terminal_id]
@@ -632,7 +718,7 @@ def delete_terminal(session):
         auto_reset_timers[terminal_id].cancel()
         del auto_reset_timers[terminal_id]
     
-    # Сохраняем изменения
+    # Сохраняем изменения в файл (fallback)
     save_terminals()
     
     print(f"🗑️  [DELETE] Terminal {terminal_id} deleted")
