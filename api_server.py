@@ -3,7 +3,7 @@ API Server для управления терминалами SberPOS
 Эмулирует серверную часть для тестирования
 """
 
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify, make_response, render_template_string
 import json
 import uuid
 import random
@@ -80,13 +80,17 @@ def auto_reset_to_idle(terminal_id, delay=5):
                 'pending': True,
                 'approved': False
             }
+            terminals[terminal_id]['qr_status'] = {
+                'pending': True,
+                'approved': False
+            }
             terminals[terminal_id]['payment_processed'] = False  # Сбрасываем флаг
             device_states[terminal_id] = {
                 'state': 'idle',
                 'amount': '0',
                 'last_update': datetime.now().isoformat()
             }
-            print(f"🔄 [AUTO-RESET] {terminal_id} -> idle (card_status reset)")
+            print(f"🔄 [AUTO-RESET] {terminal_id} -> idle (all statuses reset)")
     
     timer = threading.Timer(delay, reset)
     timer.start()
@@ -260,6 +264,10 @@ def register_terminal():
         'face_confirm_enabled': False,
         'uuid': str(uuid.uuid4()),
         'card_status': {
+            'pending': True,
+            'approved': False
+        },
+        'qr_status': {
             'pending': True,
             'approved': False
         },
@@ -734,6 +742,379 @@ def delete_terminal(session):
     
     return jsonify({'success': True, 'status': 'success', 'message': f'Terminal {terminal_id} deleted'}), 200
 
+@app.route('/api/qr/status', methods=['GET'])
+def qr_status():
+    """Получить статус QR-оплаты"""
+    terminal_id = request.args.get('terminal_id')
+    uuid_param = request.args.get('uuid')
+    
+    if not terminal_id:
+        return jsonify({'error': 'Missing terminal_id'}), 400
+    
+    if terminal_id not in terminals:
+        return jsonify({'error': 'Terminal not found'}), 404
+    
+    terminal = terminals[terminal_id]
+    
+    # Проверка UUID
+    if uuid_param and terminal.get('uuid') != uuid_param:
+        return jsonify({'error': 'Invalid UUID'}), 403
+    
+    # Обновляем время последней активности
+    last_seen[terminal_id] = datetime.now()
+    
+    # Получаем статус QR-оплаты
+    qr_status_data = terminal.get('qr_status', {})
+    pending = qr_status_data.get('pending', True)
+    approved = qr_status_data.get('approved', False)
+    
+    current = terminal.get('current_payload', {'state': 'idle', 'data': {}})
+    state = current.get('state', 'idle')
+    
+    print(f"📱 [QR STATUS] {terminal_id}: state={state}, pending={pending}, approved={approved}")
+    
+    return jsonify({
+        'success': True,
+        'status': state,
+        'state': state,
+        'pending': pending,
+        'approved': approved,
+        'data': current.get('data', {}),
+        'terminal_id': terminal_id
+    }), 200
+
+@app.route('/admin/confirm_qr', methods=['POST'])
+@require_auth
+def confirm_qr(session):
+    """Подтвердить/отклонить QR-оплату"""
+    data = request.json
+    terminal_id = data.get('terminal_id')
+    approved = data.get('approved', True)
+    
+    if terminal_id not in terminals:
+        return jsonify({'error': 'Terminal not found'}), 404
+    
+    # Проверяем что терминал в состоянии оплаты
+    current_state = terminals[terminal_id].get('current_payload', {}).get('state', 'idle')
+    if current_state not in ['pay', 'payPending']:
+        print(f"⚠️  [QR] {terminal_id}: not in payment state (current: {current_state})")
+        return jsonify({'error': 'Not in payment state', 'success': False}), 400
+    
+    # Проверяем что оплата еще не обработана
+    if terminals[terminal_id].get('payment_processed', False):
+        print(f"⚠️  [QR] {terminal_id}: payment already processed")
+        return jsonify({'error': 'Payment already processed', 'success': False}), 400
+    
+    # Помечаем оплату как обработанную
+    terminals[terminal_id]['payment_processed'] = True
+    
+    # Устанавливаем статус подтверждения QR
+    terminals[terminal_id]['qr_status'] = {
+        'pending': False,
+        'approved': approved
+    }
+    
+    print(f"📱 [QR] {terminal_id}: {'✅ approved' if approved else '❌ declined'} (pending=False)")
+    print(f"   QR status will auto-reset to idle in 5s")
+    
+    # Автоматически сбросить в idle через 5 секунд
+    auto_reset_to_idle(terminal_id, delay=5)
+    
+    return jsonify({'success': True, 'status': 'success'}), 200
+
+@app.route('/p/<terminal_id>')
+def payment_page(terminal_id):
+    """Страница оплаты по QR-коду"""
+    if terminal_id not in terminals:
+        return "Терминал не найден", 404
+    
+    terminal = terminals[terminal_id]
+    current = terminal.get('current_payload', {'state': 'idle', 'data': {}})
+    amount = current.get('data', {}).get('amount', '0')
+    state = current.get('state', 'idle')
+    
+    # Если терминал не в состоянии оплаты
+    if state not in ['pay', 'payPending']:
+        return render_template_string('''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>СберЭкран - Оплата</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 { color: #333; margin-bottom: 20px; font-size: 24px; }
+        p { color: #666; font-size: 16px; line-height: 1.6; }
+        .icon { font-size: 64px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">⏸️</div>
+        <h1>Оплата недоступна</h1>
+        <p>Терминал {{ terminal_id }} не ожидает оплату.<br>Пожалуйста, начните оплату на терминале.</p>
+    </div>
+</body>
+</html>
+        ''', terminal_id=terminal_id)
+    
+    # Страница оплаты
+    return render_template_string('''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>СберЭкран - Оплата {{ amount }} ₽</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .logo { font-size: 48px; margin-bottom: 20px; }
+        h1 { color: #333; margin-bottom: 10px; font-size: 28px; }
+        .amount {
+            font-size: 48px;
+            font-weight: bold;
+            color: #667eea;
+            margin: 20px 0;
+        }
+        .terminal { color: #999; font-size: 14px; margin-bottom: 30px; }
+        .btn {
+            width: 100%;
+            padding: 18px;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 12px;
+        }
+        .btn-pay {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-pay:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4); }
+        .btn-pay:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn-cancel {
+            background: #f5f5f5;
+            color: #666;
+        }
+        .btn-cancel:hover { background: #e0e0e0; }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 16px;
+            display: none;
+        }
+        .status.success { background: #d4edda; color: #155724; display: block; }
+        .status.error { background: #f8d7da; color: #721c24; display: block; }
+        .status.waiting { background: #fff3cd; color: #856404; display: block; }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+            display: none;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">💳</div>
+        <h1>Оплата по QR-коду</h1>
+        <div class="amount">{{ amount }} ₽</div>
+        <div class="terminal">Терминал: {{ terminal_id }}</div>
+        
+        <button class="btn btn-pay" id="payBtn" onclick="pay()">Оплатить</button>
+        <button class="btn btn-cancel" onclick="cancel()">Отменить</button>
+        
+        <div class="loader" id="loader"></div>
+        <div class="status" id="status"></div>
+    </div>
+
+    <script>
+        const terminalId = '{{ terminal_id }}';
+        let polling = false;
+        let pollInterval;
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+        }
+
+        function showLoader(show) {
+            document.getElementById('loader').style.display = show ? 'block' : 'none';
+        }
+
+        async function pay() {
+            const btn = document.getElementById('payBtn');
+            btn.disabled = true;
+            showLoader(true);
+            showStatus('Ожидание подтверждения от кассира...', 'waiting');
+
+            // Отправляем запрос на начало QR-оплаты
+            try {
+                const response = await fetch('/api/qr/initiate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ terminal_id: terminalId })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Начинаем polling статуса
+                    startPolling();
+                } else {
+                    showStatus('Ошибка: ' + (data.error || 'Неизвестная ошибка'), 'error');
+                    btn.disabled = false;
+                    showLoader(false);
+                }
+            } catch (error) {
+                showStatus('Ошибка соединения с сервером', 'error');
+                btn.disabled = false;
+                showLoader(false);
+            }
+        }
+
+        function startPolling() {
+            polling = true;
+            pollInterval = setInterval(checkStatus, 1000);
+        }
+
+        function stopPolling() {
+            polling = false;
+            if (pollInterval) {
+                clearInterval(pollInterval);
+            }
+        }
+
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/qr/check?terminal_id=' + terminalId);
+                const data = await response.json();
+
+                if (data.pending === false) {
+                    stopPolling();
+                    showLoader(false);
+                    
+                    if (data.approved) {
+                        showStatus('✅ Оплата успешно проведена!', 'success');
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 3000);
+                    } else {
+                        showStatus('❌ Оплата отклонена кассиром', 'error');
+                        document.getElementById('payBtn').disabled = false;
+                    }
+                }
+            } catch (error) {
+                console.error('Polling error:', error);
+            }
+        }
+
+        function cancel() {
+            stopPolling();
+            window.location.reload();
+        }
+    </script>
+</body>
+</html>
+    ''', terminal_id=terminal_id, amount=amount)
+
+@app.route('/api/qr/initiate', methods=['POST'])
+def qr_initiate():
+    """Инициировать QR-оплату"""
+    data = request.json
+    terminal_id = data.get('terminal_id')
+    
+    if not terminal_id or terminal_id not in terminals:
+        return jsonify({'error': 'Terminal not found', 'success': False}), 404
+    
+    terminal = terminals[terminal_id]
+    
+    # Проверяем что терминал в состоянии оплаты
+    current_state = terminal.get('current_payload', {}).get('state', 'idle')
+    if current_state not in ['pay', 'payPending']:
+        return jsonify({'error': 'Not in payment state', 'success': False}), 400
+    
+    # Инициализируем QR статус
+    terminal['qr_status'] = {
+        'pending': True,
+        'approved': False,
+        'initiated_at': datetime.now().isoformat()
+    }
+    
+    print(f"📱 [QR INITIATE] {terminal_id}: QR payment initiated")
+    
+    return jsonify({'success': True}), 200
+
+@app.route('/api/qr/check', methods=['GET'])
+def qr_check():
+    """Проверить статус QR-оплаты (для веб-страницы)"""
+    terminal_id = request.args.get('terminal_id')
+    
+    if not terminal_id or terminal_id not in terminals:
+        return jsonify({'error': 'Terminal not found'}), 404
+    
+    terminal = terminals[terminal_id]
+    qr_status_data = terminal.get('qr_status', {'pending': True, 'approved': False})
+    
+    return jsonify({
+        'success': True,
+        'pending': qr_status_data.get('pending', True),
+        'approved': qr_status_data.get('approved', False)
+    }), 200
+
 @app.route('/')
 def index():
     return jsonify({
@@ -746,11 +1127,16 @@ def index():
             'GET /api/card/status - Get card confirmation status',
             'GET /api/face/status - Get face confirmation status',
             'POST /api/face/upload - Upload face image for payment',
+            'GET /api/qr/status - Get QR payment status',
+            'POST /api/qr/initiate - Initiate QR payment',
+            'GET /api/qr/check - Check QR payment status (web)',
+            'GET /p/<terminal_id> - QR payment page',
             'POST /admin/set_device_payload',
             'POST /admin/reset',
             'POST /admin/set_face_confirm',
             'POST /admin/confirm_card',
             'POST /admin/confirm_face',
+            'POST /admin/confirm_qr - Confirm/decline QR payment',
             'POST /admin/delete_terminal - Delete terminal',
             'GET /admin/status'
         ],

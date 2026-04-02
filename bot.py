@@ -177,6 +177,12 @@ class TerminalAPI:
         ok, r = self._post('/admin/confirm_face', {'terminal_id': self.terminal_id, 'approved': approved}, lambda: self.confirm_face(approved))
         return (True, "✅ Лицо подтверждено" if approved else "❌ Лицо отклонено") if ok else (False, f"❌ Ошибка: {getattr(r, 'status_code', r)}")
 
+    def confirm_qr(self, approved=True):
+        """Подтвердить/отклонить QR-оплату"""
+        if not self._ensure_auth(): return False, "❌ Ошибка авторизации"
+        ok, r = self._post('/admin/confirm_qr', {'terminal_id': self.terminal_id, 'approved': approved}, lambda: self.confirm_qr(approved))
+        return (True, "✅ QR-оплата подтверждена" if approved else "❌ QR-оплата отклонена") if ok else (False, f"❌ Ошибка: {getattr(r, 'status_code', r)}")
+
     def get_status(self):
         if not self._ensure_auth(): return False, "❌ Ошибка авторизации"
         try:
@@ -222,6 +228,7 @@ def kb_basic():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row(KeyboardButton("💸 Оплатить 100₽"), KeyboardButton("✅ Подтвердить карту"), KeyboardButton("❌ Отклонить карту"))
     kb.row(KeyboardButton("✅ Face подтвердить"), KeyboardButton("❌ Face отклонить"))
+    kb.row(KeyboardButton("✅ QR подтвердить"), KeyboardButton("❌ QR отклонить"))
     kb.row(KeyboardButton("🚫 Отменить"), KeyboardButton("🔄 Выход в idle (все)"))
     kb.row(KeyboardButton("🔙 Назад"))
     return kb
@@ -542,6 +549,16 @@ def handle_all(message):
     elif text == "❌ Face отклонить":
         msg = bot.send_message(chat_id, "🔄 Отклонение лица...")
         run_async(api.confirm_face, chat_id, msg.message_id, False,
+                  on_done=lambda ok, _: (send_status_after_delay(chat_id, api), auto_idle_after_confirm(chat_id, api)))
+
+    elif text == "✅ QR подтвердить":
+        msg = bot.send_message(chat_id, "📱 Подтверждение QR-оплаты...")
+        run_async(api.confirm_qr, chat_id, msg.message_id, True,
+                  on_done=lambda ok, _: send_status_after_delay(chat_id, api))
+
+    elif text == "❌ QR отклонить":
+        msg = bot.send_message(chat_id, "🔄 Отклонение QR-оплаты...")
+        run_async(api.confirm_qr, chat_id, msg.message_id, False,
                   on_done=lambda ok, _: (send_status_after_delay(chat_id, api), auto_idle_after_confirm(chat_id, api)))
 
     elif text == "🔄 Выход в idle (все)":
