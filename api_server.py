@@ -854,67 +854,18 @@ def confirm_qr(session):
     
     return jsonify({'success': True, 'status': 'success'}), 200
 
-@app.route('/p/<terminal_id>')
-def payment_page(terminal_id):
-    """Страница оплаты по QR-коду"""
-    if terminal_id not in terminals:
-        return "Терминал не найден", 404
+@app.route('/pay')
+def universal_payment_page():
+    """Универсальная страница оплаты - определяет терминал автоматически"""
+    # Ищем активный терминал в состоянии оплаты
+    active_terminal = None
+    for terminal_id, terminal in terminals.items():
+        current = terminal.get('current_payload', {'state': 'idle'})
+        if current.get('state') in ['pay', 'payPending']:
+            active_terminal = terminal_id
+            break
     
-    terminal = terminals[terminal_id]
-    
-    # Проверяем пароль
-    qr_password = request.args.get('pass', '')
-    expected_password = terminal.get('qr_password', '')
-    
-    if not qr_password or qr_password != expected_password:
-        return render_template_string('''
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>СберЭкран - Доступ запрещен</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            border-radius: 20px;
-            padding: 40px;
-            max-width: 400px;
-            width: 100%;
-            text-align: center;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        h1 { color: #333; margin-bottom: 20px; font-size: 24px; }
-        p { color: #666; font-size: 16px; line-height: 1.6; }
-        .icon { font-size: 64px; margin-bottom: 20px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="icon">🔒</div>
-        <h1>Доступ запрещен</h1>
-        <p>Неверный код доступа или ссылка устарела.<br>Пожалуйста, отсканируйте QR-код заново.</p>
-    </div>
-</body>
-</html>
-        '''), 403
-    
-    current = terminal.get('current_payload', {'state': 'idle', 'data': {}})
-    amount = current.get('data', {}).get('amount', '0')
-    state = current.get('state', 'idle')
-    
-    # Если терминал не в состоянии оплаты
-    if state not in ['pay', 'payPending']:
+    if not active_terminal:
         return render_template_string('''
 <!DOCTYPE html>
 <html>
@@ -949,15 +900,21 @@ def payment_page(terminal_id):
 </head>
 <body>
     <div class="container">
-        <div class="icon">⏸️</div>
-        <h1>Оплата недоступна</h1>
-        <p>Терминал {{ terminal_id }} не ожидает оплату.<br>Пожалуйста, начните оплату на терминале.</p>
+        <div class="icon">⏳</div>
+        <h1>Нет активных оплат</h1>
+        <p>Пожалуйста, запустите оплату на терминале и отсканируйте QR-код заново.</p>
     </div>
 </body>
 </html>
-        ''', terminal_id=terminal_id)
+        '''), 404
     
-    # Страница оплаты
+    # Показываем страницу оплаты для найденного терминала
+    terminal = terminals[active_terminal]
+    current = terminal.get('current_payload', {'state': 'idle', 'data': {}})
+    amount = current.get('data', {}).get('amount', '0')
+    state = current.get('state', 'idle')
+    
+    # Страница оплаты (без проверки пароля для универсального URL)
     return render_template_string('''
 <!DOCTYPE html>
 <html>
@@ -1062,10 +1019,6 @@ def payment_page(terminal_id):
 
     <script>
         const terminalId = '{{ terminal_id }}';
-        const urlParams = new URLSearchParams(window.location.search);
-        const qrPassword = urlParams.get('pass') || '';
-        let polling = false;
-        let pollInterval;
 
         function showStatus(message, type) {
             const status = document.getElementById('status');
@@ -1083,25 +1036,20 @@ def payment_page(terminal_id):
             showLoader(true);
             showStatus('Переключение терминала на ожидание...', 'waiting');
 
-            // Отправляем запрос на переключение терминала в режим ожидания с паролем
             try {
                 const response = await fetch('/api/qr/initiate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        terminal_id: terminalId,
-                        password: qrPassword
-                    })
+                    body: JSON.stringify({ terminal_id: terminalId })
                 });
 
                 const data = await response.json();
                 
                 if (data.success) {
-                    showStatus('Ожидание подтверждения от кассира...', 'waiting');
-                    // Начинаем polling статуса
+                    showStatus('Ожидание подтверждения кассира...', 'waiting');
                     startPolling();
                 } else {
-                    showStatus('Ошибка: ' + (data.error || 'Неизвестная ошибка'), 'error');
+                    showStatus('Ошибка: ' + (data.message || 'Неизвестная ошибка'), 'error');
                     btn.disabled = false;
                     showLoader(false);
                 }
@@ -1113,49 +1061,35 @@ def payment_page(terminal_id):
         }
 
         function startPolling() {
-            polling = true;
-            pollInterval = setInterval(checkStatus, 1000);
-        }
-
-        function stopPolling() {
-            polling = false;
-            if (pollInterval) {
-                clearInterval(pollInterval);
-            }
-        }
-
-        async function checkStatus() {
-            try {
-                const response = await fetch('/api/qr/check?terminal_id=' + terminalId);
-                const data = await response.json();
-
-                if (data.pending === false) {
-                    stopPolling();
-                    showLoader(false);
+            const pollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/api/qr/check?terminal_id=' + terminalId);
+                    const data = await response.json();
                     
-                    if (data.approved) {
-                        showStatus('✅ Оплата успешно проведена!', 'success');
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 3000);
-                    } else {
-                        showStatus('❌ Оплата отклонена кассиром', 'error');
-                        document.getElementById('payBtn').disabled = false;
+                    if (data.status === 'success') {
+                        clearInterval(pollInterval);
+                        showLoader(false);
+                        showStatus('✅ Оплата успешна!', 'success');
+                        setTimeout(() => window.close(), 2000);
+                    } else if (data.status === 'failed') {
+                        clearInterval(pollInterval);
+                        showLoader(false);
+                        showStatus('❌ Оплата отклонена', 'error');
+                        setTimeout(() => window.close(), 2000);
                     }
+                } catch (error) {
+                    console.error('Polling error:', error);
                 }
-            } catch (error) {
-                console.error('Polling error:', error);
-            }
+            }, 1000);
         }
 
         function cancel() {
-            stopPolling();
-            window.location.reload();
+            window.close();
         }
     </script>
 </body>
 </html>
-    ''', terminal_id=terminal_id, amount=amount)
+    ''', terminal_id=active_terminal, amount=amount)
 
 @app.route('/api/qr/initiate', methods=['POST'])
 def qr_initiate():
