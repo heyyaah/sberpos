@@ -999,9 +999,9 @@ def payment_page(terminal_id):
             const btn = document.getElementById('payBtn');
             btn.disabled = true;
             showLoader(true);
-            showStatus('Ожидание подтверждения от кассира...', 'waiting');
+            showStatus('Переключение терминала на ожидание...', 'waiting');
 
-            // Отправляем запрос на начало QR-оплаты
+            // Отправляем запрос на переключение терминала в режим ожидания
             try {
                 const response = await fetch('/api/qr/initiate', {
                     method: 'POST',
@@ -1012,6 +1012,7 @@ def payment_page(terminal_id):
                 const data = await response.json();
                 
                 if (data.success) {
+                    showStatus('Ожидание подтверждения от кассира...', 'waiting');
                     // Начинаем polling статуса
                     startPolling();
                 } else {
@@ -1073,7 +1074,7 @@ def payment_page(terminal_id):
 
 @app.route('/api/qr/initiate', methods=['POST'])
 def qr_initiate():
-    """Инициировать QR-оплату"""
+    """Инициировать QR-оплату - переключить терминал на сцену ожидания"""
     data = request.json
     terminal_id = data.get('terminal_id')
     
@@ -1087,6 +1088,17 @@ def qr_initiate():
     if current_state not in ['pay', 'payPending']:
         return jsonify({'error': 'Not in payment state', 'success': False}), 400
     
+    # Переключаем терминал на сцену ожидания (payPending)
+    current_amount = terminal.get('current_payload', {}).get('data', {}).get('amount', '0')
+    terminal['current_payload'] = {
+        'state': 'payPending',
+        'data': {
+            'amount': current_amount,
+            'content': '',
+            'buttons': ''
+        }
+    }
+    
     # Инициализируем QR статус
     terminal['qr_status'] = {
         'pending': True,
@@ -1094,7 +1106,13 @@ def qr_initiate():
         'initiated_at': datetime.now().isoformat()
     }
     
-    print(f"📱 [QR INITIATE] {terminal_id}: QR payment initiated")
+    device_states[terminal_id] = {
+        'state': 'payPending',
+        'amount': current_amount,
+        'last_update': datetime.now().isoformat()
+    }
+    
+    print(f"📱 [QR INITIATE] {terminal_id}: Switched to payPending, waiting for confirmation")
     
     return jsonify({'success': True}), 200
 
