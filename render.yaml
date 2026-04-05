@@ -10,6 +10,8 @@ services:
         value: 3.11.0
       - key: PORT
         value: 5001
+      - key: DATABASE_URL
+        value: postgresql://sberpos_db_user:AGaMfeza90tWL1CCycxOMLaIdY1KmhZ4@dpg-d76qp6oule4c73945opg-a/sberpos_db
     
   # Telegram Bot (Terminal Management)
   - type: worker

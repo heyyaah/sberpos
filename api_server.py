@@ -64,7 +64,7 @@ def get_db_connection():
     return None
 
 def init_db():
-    """Инициализация таблицы терминалов"""
+    """Инициализация таблиц БД"""
     if not DATABASE_URL or not PSYCOPG_AVAILABLE:
         print("⚠️  DATABASE_URL не найден или psycopg недоступен, используется файловое хранилище")
         return
@@ -72,6 +72,8 @@ def init_db():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+        
+        # Таблица терминалов
         cur.execute('''
             CREATE TABLE IF NOT EXISTS terminals (
                 terminal_id VARCHAR(10) PRIMARY KEY,
@@ -79,10 +81,49 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # Таблица пользователей
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                username VARCHAR(100) PRIMARY KEY,
+                data JSONB NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Таблица транзакций
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS transactions (
+                id SERIAL PRIMARY KEY,
+                terminal_id VARCHAR(10) NOT NULL,
+                data JSONB NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Таблица смен
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS shifts (
+                terminal_id VARCHAR(10) PRIMARY KEY,
+                data JSONB NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Таблица истории баланса
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS balance_history (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(100) NOT NULL,
+                data JSONB NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         conn.commit()
         cur.close()
         conn.close()
-        print("✅ База данных инициализирована")
+        print("✅ База данных инициализирована (5 таблиц)")
     except Exception as e:
         print(f"❌ Ошибка инициализации БД: {e}")
 
@@ -175,12 +216,29 @@ def save_terminals():
         print(f"❌ Ошибка сохранения терминалов: {e}")
 
 def load_users():
-    """Загрузка пользователей"""
+    """Загрузка пользователей из БД или файла"""
     global users
+    
+    # Пробуем загрузить из PostgreSQL
+    if DATABASE_URL and PSYCOPG_AVAILABLE:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('SELECT username, data FROM users')
+            rows = cur.fetchall()
+            users = {row[0]: row[1] for row in rows}
+            cur.close()
+            conn.close()
+            print(f"👥 Загружено {len(users)} пользователей из PostgreSQL")
+            return
+        except Exception as e:
+            print(f"❌ Ошибка загрузки пользователей из БД: {e}")
+    
+    # Fallback на файл
     try:
         with open(USERS_FILE, 'r', encoding='utf-8') as f:
             users = json.load(f)
-            print(f"👥 Загружено {len(users)} пользователей")
+            print(f"👥 Загружено {len(users)} пользователей из файла")
     except FileNotFoundError:
         users = {}
         print("👥 Файл пользователей не найден, создан новый")
@@ -189,7 +247,27 @@ def load_users():
         users = {}
 
 def save_users():
-    """Сохранение пользователей"""
+    """Сохранение пользователей в БД или файл"""
+    # Сохраняем в PostgreSQL
+    if DATABASE_URL and PSYCOPG_AVAILABLE:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            for username, data in users.items():
+                cur.execute('''
+                    INSERT INTO users (username, data, updated_at)
+                    VALUES (%s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (username) 
+                    DO UPDATE SET data = %s, updated_at = CURRENT_TIMESTAMP
+                ''', (username, Jsonb(data), Jsonb(data)))
+            conn.commit()
+            cur.close()
+            conn.close()
+            return
+        except Exception as e:
+            print(f"❌ Ошибка сохранения пользователей в БД: {e}")
+    
+    # Fallback на файл
     try:
         with open(USERS_FILE, 'w', encoding='utf-8') as f:
             json.dump(users, f, ensure_ascii=False, indent=2)
