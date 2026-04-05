@@ -1761,6 +1761,14 @@ def cabinet_balance():
         'history': history[-20:]  # последние 20 операций
     }), 200
 
+@app.route('/static/logo.jpg')
+def serve_logo():
+    """Отдать логотип"""
+    try:
+        return send_file('static_logo.jpg', mimetype='image/jpeg')
+    except Exception:
+        return '', 404
+
 @app.route('/cabinet')
 def cabinet_page():
     """Страница личного кабинета"""
@@ -1771,6 +1779,7 @@ def cabinet_page():
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Личный кабинет - СберЭкран</title>
+    <link rel="icon" type="image/jpeg" href="/static/logo.jpg">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -1845,7 +1854,10 @@ def cabinet_page():
 <body>
     <div class="header">
         <div class="container">
-            <h1>💼 Личный кабинет СберЭкран</h1>
+            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
+                <img src="/static/logo.jpg" alt="Logo" style="width: 50px; height: 50px; border-radius: 10px; object-fit: cover;">
+                <h1 style="margin: 0;">💼 Личный кабинет СберЭкран</h1>
+            </div>
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
                     <p id="username"></p>
