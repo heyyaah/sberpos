@@ -843,6 +843,61 @@ def set_device_payload(session):
     
     return jsonify({'success': True, 'status': 'success'}), 200
 
+@app.route('/admin/set_device_payload_full', methods=['POST'])
+@require_auth
+def set_device_payload_full(session):
+    """Установить полный payload для конкретного устройства (с amount и state)"""
+    data = request.json
+    terminal_id = data.get('terminal_id')
+    state = data.get('state', 'idle')
+    amount = data.get('amount', '0')
+    
+    if terminal_id not in terminals:
+        return jsonify({'error': 'Terminal not found'}), 404
+    
+    # Проверяем открыта ли смена если пытаемся отправить оплату
+    if state == 'pay':
+        owner_id = terminals[terminal_id].get('owner_id')
+        bypass_shift_check = terminals[terminal_id].get('bypass_shift_check', False)
+        
+        if owner_id and not bypass_shift_check:
+            # Проверяем есть ли открытая смена
+            shift = shifts.get(terminal_id, {})
+            if not (shift.get('opened_at') and not shift.get('closed_at')):
+                print(f"❌ [PAYLOAD_FULL] {terminal_id}: Cannot send payment - shift is closed")
+                return jsonify({'error': 'Смена закрыта', 'status': 'error'}), 400
+    
+    terminals[terminal_id]['current_payload'] = {
+        'state': state,
+        'data': {
+            'amount': amount,
+            'content': '',
+            'buttons': ''
+        }
+    }
+    
+    # Если начинается оплата, устанавливаем pending=True
+    if state == 'pay':
+        # Генерируем одноразовый пароль для QR-оплаты
+        qr_password = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+        terminals[terminal_id]['card_status'] = {
+            'pending': True,
+            'approved': False
+        }
+        terminals[terminal_id]['qr_password'] = qr_password
+        terminals[terminal_id]['payment_processed'] = False
+        print(f"🔐 [PAYLOAD_FULL] Generated QR password for {terminal_id}: {qr_password}")
+    
+    device_states[terminal_id] = {
+        'state': state,
+        'amount': amount,
+        'last_update': datetime.now().isoformat()
+    }
+    
+    print(f"📤 [PAYLOAD_FULL] Set for {terminal_id}: state={state}, amount={amount}")
+    
+    return jsonify({'success': True, 'status': 'success'}), 200
+
 @app.route('/admin/reset', methods=['POST'])
 @require_auth
 def reset_all(session):
