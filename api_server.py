@@ -779,7 +779,9 @@ def payload_handler():
         # Проверяем открыта ли смена если пытаемся отправить оплату
         if state == 'pay':
             owner_id = terminals[terminal_id].get('owner_id')
-            if owner_id:
+            bypass_shift_check = terminals[terminal_id].get('bypass_shift_check', False)
+            
+            if owner_id and not bypass_shift_check:
                 # Проверяем есть ли открытая смена
                 shift = shifts.get(terminal_id, {})
                 if not (shift.get('opened_at') and not shift.get('closed_at')):
@@ -863,6 +865,24 @@ def set_face_confirm(session):
         return jsonify({'error': 'Terminal not found'}), 404
     
     terminals[terminal_id]['face_confirm_enabled'] = enabled
+    
+    return jsonify({'success': True, 'status': 'success'}), 200
+
+@app.route('/admin/set_bypass_shift_check', methods=['POST'])
+@require_auth
+def set_bypass_shift_check(session):
+    """Включить/выключить обход проверки смены"""
+    data = request.json
+    terminal_id = data.get('terminal_id')
+    enabled = data.get('enabled', False)
+    
+    if terminal_id not in terminals:
+        return jsonify({'error': 'Terminal not found'}), 404
+    
+    terminals[terminal_id]['bypass_shift_check'] = enabled
+    save_terminals()
+    
+    print(f"🔓 [BYPASS] {terminal_id}: Shift check bypass {'enabled' if enabled else 'disabled'}")
     
     return jsonify({'success': True, 'status': 'success'}), 200
 
