@@ -1799,7 +1799,7 @@ def cabinet_page():
         <div class="container">
             <h1>💼 Личный кабинет СберЭкран</h1>
             <p id="username"></p>
-            <p id="balance" style="font-size: 24px; margin-top: 10px;">💰 Баланс: <span id="balanceAmount">0</span> ₽</p>
+            <p id="balance" class="hidden" style="font-size: 24px; margin-top: 10px;">💰 Баланс: <span id="balanceAmount">0</span> ₽</p>
         </div>
     </div>
 
@@ -1857,6 +1857,7 @@ def cabinet_page():
             if (response.ok) {
                 currentUser = username;
                 document.getElementById('username').textContent = 'Пользователь: ' + username;
+                document.getElementById('balance').classList.remove('hidden');
                 document.getElementById('authSection').classList.add('hidden');
                 document.getElementById('bindSection').classList.remove('hidden');
                 document.getElementById('terminalsSection').classList.remove('hidden');
