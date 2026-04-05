@@ -4,11 +4,11 @@
 import requests
 
 # URL сервера
-BASE_URL = "http://localhost:5001"  # Или https://sberpos-api.onrender.com
+BASE_URL = "https://sberpos-api.onrender.com"
 
-# Данные для входа (используй свой терминал)
-TERMINAL_ID = "TRM-0001"  # Замени на свой ID
-PASSWORD = "123456"       # Замени на свой пароль
+# Данные для входа (используй любой существующий терминал)
+TERMINAL_ID = input("Введите ID терминала (например TRM-0001): ").strip()
+PASSWORD = input("Введите пароль терминала: ").strip()
 
 def clear_all_terminals():
     # Создаём сессию
