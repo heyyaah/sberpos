@@ -19,12 +19,12 @@
 
     invoke-super {p0, p1}, Landroid/app/Activity;->onCreate(Landroid/os/Bundle;)V
 
-    const v0, 0x7f030000    # layout/activity_main
+    const v0, 0x7f010000    # layout/activity_main
 
     invoke-virtual {p0, v0}, Landroid/app/Activity;->setContentView(I)V
 
     # Получаем WebView
-    const v0, 0x7f080000    # id/webview
+    const v0, 0x7f020000    # id/webview
 
     invoke-virtual {p0, v0}, Landroid/app/Activity;->findViewById(I)Landroid/view/View;
 
@@ -45,14 +45,14 @@
 
     invoke-virtual {v1, v2}, Landroid/webkit/WebSettings;->setDatabaseEnabled(Z)V
 
-    # Устанавливаем WebViewClient чтобы ссылки открывались внутри приложения
+    # Устанавливаем WebViewClient
     new-instance v2, Landroid/webkit/WebViewClient;
 
     invoke-direct {v2}, Landroid/webkit/WebViewClient;-><init>()V
 
     invoke-virtual {v0, v2}, Landroid/webkit/WebView;->setWebViewClient(Landroid/webkit/WebViewClient;)V
 
-    # Загружаем URL личного кабинета
+    # Загружаем URL
     const-string v1, "https://sberpos-api.onrender.com/cabinet"
 
     invoke-virtual {v0, v1}, Landroid/webkit/WebView;->loadUrl(Ljava/lang/String;)V
@@ -64,7 +64,7 @@
     .locals 2
 
     # Получаем WebView
-    const v0, 0x7f080000    # id/webview
+    const v0, 0x7f020000    # id/webview
 
     invoke-virtual {p0, v0}, Landroid/app/Activity;->findViewById(I)Landroid/view/View;
 
@@ -79,7 +79,7 @@
 
     if-eqz v1, :cond_0
 
-    # Возвращаемся назад в истории WebView
+    # Возвращаемся назад
     invoke-virtual {v0}, Landroid/webkit/WebView;->goBack()V
 
     goto :goto_0
