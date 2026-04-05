@@ -29,7 +29,7 @@ services:
   - type: web
     name: sberpos-support-bot
     env: python
-    buildCommand: pip install -r support_requirements.txt
+    buildCommand: pip install pyTelegramBotAPI==4.14.0
     startCommand: python support_bot.py
     envVars:
       - key: PYTHON_VERSION
