@@ -8,6 +8,23 @@ import json
 import time
 from datetime import datetime
 import telebot
+from threading import Thread
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# Фейковый HTTP сервер для Render (если сервис создан как web вместо worker)
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'OK')
+    def log_message(self, format, *args):
+        pass  # Отключаем логи
+
+def start_health_server():
+    port = int(os.environ.get('PORT', 10000))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    print(f"Health check server started on port {port}")
+    server.serve_forever()
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
 # ── Config ────────────────────────────────────────────────────────────────
@@ -627,5 +644,11 @@ def notify_admins_new_ticket(ticket_id, ticket):
 if __name__ == '__main__':
     print("🤖 Support bot starting...")
     init_admin()  # Инициализируем админа из переменной окружения
+    
+    # Запускаем health check сервер в отдельном потоке (для Render web service)
+    if os.environ.get('PORT'):
+        health_thread = Thread(target=start_health_server, daemon=True)
+        health_thread.start()
+    
     print("✅ Support bot started!")
     bot.infinity_polling()
