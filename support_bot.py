@@ -12,6 +12,7 @@ from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 
 # ── Config ────────────────────────────────────────────────────────────────
 TOKEN = os.environ.get('SUPPORT_BOT_TOKEN', '8742060687:AAHfsRrh1EKju-ZZ3CLHb2cBl-CkM63fByc')
+ADMIN_USER_ID = os.environ.get('ADMIN_USER_ID')  # ID админа из переменной окружения
 TICKETS_DB = 'tickets.json'
 USERS_DB = 'users.json'
 
@@ -19,6 +20,18 @@ bot = telebot.TeleBot(TOKEN, threaded=True)
 
 # Состояния пользователей
 user_states = {}  # chat_id -> {'state': 'creating_ticket', 'ticket_id': 123, ...}
+
+# Инициализация админа при старте
+def init_admin():
+    if ADMIN_USER_ID:
+        users = get_users()
+        admin_id = int(ADMIN_USER_ID)
+        if admin_id not in users.get('admins', []):
+            if 'admins' not in users:
+                users['admins'] = []
+            users['admins'].append(admin_id)
+            save_users(users)
+            print(f"✅ Admin {admin_id} added automatically")
 
 # ── Database ──────────────────────────────────────────────────────────────
 def load_json(filename, default=None):
@@ -593,5 +606,7 @@ def notify_admins_new_ticket(ticket_id, ticket):
 
 # ── Entry point ───────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    print("Support bot started...")
+    print("🤖 Support bot starting...")
+    init_admin()  # Инициализируем админа из переменной окружения
+    print("✅ Support bot started!")
     bot.infinity_polling()

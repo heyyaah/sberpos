@@ -11,7 +11,7 @@ services:
       - key: PORT
         value: 5001
     
-  # Telegram Bot
+  # Telegram Bot (Terminal Management)
   - type: web
     name: sberpos-bot
     env: python
@@ -24,3 +24,17 @@ services:
         sync: false
       - key: BASE_URL
         value: https://sberpos-api.onrender.com
+  
+  # Support Bot (Customer Support)
+  - type: web
+    name: sberpos-support-bot
+    env: python
+    buildCommand: pip install -r support_requirements.txt
+    startCommand: python support_bot.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SUPPORT_BOT_TOKEN
+        sync: false
+      - key: ADMIN_USER_ID
+        sync: false
