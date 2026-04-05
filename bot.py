@@ -220,7 +220,8 @@ def kb_terminal(name):
 
 def kb_basic():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.row(KeyboardButton("💸 Оплатить 100₽"), KeyboardButton("✅ Подтвердить карту"), KeyboardButton("❌ Отклонить карту"))
+    kb.row(KeyboardButton("💸 Оплатить 100₽"), KeyboardButton("💸 Своя сумма"))
+    kb.row(KeyboardButton("✅ Подтвердить карту"), KeyboardButton("❌ Отклонить карту"))
     kb.row(KeyboardButton("✅ Face подтвердить"), KeyboardButton("❌ Face отклонить"))
     kb.row(KeyboardButton("🚫 Отменить"), KeyboardButton("🔄 Выход в idle (все)"))
     kb.row(KeyboardButton("🔙 Назад"))
@@ -228,7 +229,6 @@ def kb_basic():
 
 def kb_detailed():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.row(KeyboardButton("💸 Своя сумма"))
     kb.row(KeyboardButton("📊 Статус"), KeyboardButton("🏓 Пинг"))
     kb.row(KeyboardButton("🙂 Face ON"), KeyboardButton("🙂 Face OFF"))
     kb.row(KeyboardButton("⚙️ Auto-idle настройки"))
