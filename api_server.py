@@ -1876,6 +1876,9 @@ def cabinet_page():
 
         async function loadBalance() {
             const response = await fetch('/cabinet/balance');
+            if (!response.ok) {
+                return; // Игнорируем ошибки (например, 401 если не авторизован)
+            }
             const data = await response.json();
             document.getElementById('balanceAmount').textContent = data.balance.toFixed(2);
         }
@@ -1921,6 +1924,9 @@ def cabinet_page():
 
         async function loadTerminals() {
             const response = await fetch('/cabinet/terminals');
+            if (!response.ok) {
+                return; // Игнорируем ошибки (например, 401 если не авторизован)
+            }
             const data = await response.json();
 
             const list = document.getElementById('terminalsList');
