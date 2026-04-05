@@ -641,9 +641,23 @@ if __name__ == '__main__':
         print(f"Starting Flask health server on port {port}")
         # Запускаем Flask в отдельном потоке для health check
         import threading
+        import time
         flask_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port))
         flask_thread.daemon = True
         flask_thread.start()
-        # Запускаем polling
+        # Запускаем polling с обработкой конфликтов
         bot.remove_webhook()
-        bot.infinity_polling()
+        while True:
+            try:
+                bot.infinity_polling(timeout=60, long_polling_timeout=60)
+            except telebot.apihelper.ApiTelegramException as e:
+                if e.error_code == 409:
+                    print("⚠️ Conflict detected (409), waiting 5 seconds before retry...")
+                    time.sleep(5)
+                    continue
+                else:
+                    raise
+            except Exception as e:
+                print(f"❌ Polling error: {e}")
+                time.sleep(5)
+                continue

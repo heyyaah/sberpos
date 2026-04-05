@@ -651,4 +651,19 @@ if __name__ == '__main__':
         health_thread.start()
     
     print("✅ Support bot started!")
-    bot.infinity_polling()
+    
+    # Запускаем polling с обработкой конфликтов (409 ошибка)
+    while True:
+        try:
+            bot.infinity_polling(timeout=60, long_polling_timeout=60)
+        except telebot.apihelper.ApiTelegramException as e:
+            if e.error_code == 409:
+                print("⚠️ Conflict detected (409), waiting 5 seconds before retry...")
+                time.sleep(5)
+                continue
+            else:
+                raise
+        except Exception as e:
+            print(f"❌ Polling error: {e}")
+            time.sleep(5)
+            continue
