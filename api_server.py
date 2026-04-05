@@ -1662,6 +1662,69 @@ def cabinet_bind_terminal():
     
     return jsonify({'success': True}), 200
 
+@app.route('/cabinet/unbind_terminal', methods=['POST'])
+def cabinet_unbind_terminal():
+    """Отвязать терминал от пользователя"""
+    session = get_session(request)
+    if not session or session.get('type') != 'user':
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.json
+    terminal_id = data.get('terminal_id')
+    
+    if not terminal_id:
+        return jsonify({'error': 'Missing terminal_id'}), 400
+    
+    username = session['username']
+    user_id = users[username]['user_id']
+    
+    # Проверяем что терминал принадлежит этому пользователю
+    if terminal_id not in users[username]['terminals']:
+        return jsonify({'error': 'Terminal not owned by user'}), 403
+    
+    # Отвязываем терминал
+    if terminal_id in terminals:
+        terminals[terminal_id].pop('owner_id', None)
+        save_terminals()
+    
+    users[username]['terminals'].remove(terminal_id)
+    save_users()
+    
+    print(f"🔓 [UNBIND] Terminal {terminal_id} unbound from user {username}")
+    
+    return jsonify({'success': True}), 200
+
+@app.route('/admin/force_unbind_terminal', methods=['POST'])
+@require_auth
+def admin_force_unbind_terminal(session):
+    """Принудительно отвязать терминал (для админов)"""
+    data = request.json
+    terminal_id = data.get('terminal_id')
+    
+    if not terminal_id:
+        return jsonify({'error': 'Missing terminal_id'}), 400
+    
+    if terminal_id not in terminals:
+        return jsonify({'error': 'Terminal not found'}), 404
+    
+    # Находим владельца
+    owner_id = terminals[terminal_id].get('owner_id')
+    if owner_id:
+        # Удаляем из списка терминалов пользователя
+        for username, user_data in users.items():
+            if user_data.get('user_id') == owner_id and terminal_id in user_data.get('terminals', []):
+                user_data['terminals'].remove(terminal_id)
+                save_users()
+                break
+    
+    # Отвязываем терминал
+    terminals[terminal_id].pop('owner_id', None)
+    save_terminals()
+    
+    print(f"🔓 [FORCE UNBIND] Terminal {terminal_id} force unbound")
+    
+    return jsonify({'success': True, 'message': f'Terminal {terminal_id} unbound'}), 200
+
 @app.route('/cabinet/terminals', methods=['GET'])
 def cabinet_terminals():
     """Получить список терминалов пользователя"""
@@ -2233,10 +2296,37 @@ def cabinet_page():
                     <p>Смена: ${terminal.shift_opened ? '🟢 Открыта' : '🔴 Закрыта'}</p>
                     <p>Транзакций в смене: ${terminal.shift_transactions}</p>
                     <p>Сумма в смене: ${terminal.shift_total} ₽</p>
-                    <button class="btn btn-primary" onclick="showStats('${terminal.terminal_id}')">Подробнее</button>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button class="btn btn-primary" onclick="showStats('${terminal.terminal_id}')">Подробнее</button>
+                        <button class="btn btn-danger" onclick="unbindTerminal('${terminal.terminal_id}')">Отвязать</button>
+                    </div>
                 `;
                 list.appendChild(card);
             });
+        }
+
+        async function unbindTerminal(terminalId) {
+            if (!confirm(`Вы уверены что хотите отвязать терминал ${terminalId}?`)) {
+                return;
+            }
+
+            const response = await fetch('/cabinet/unbind_terminal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ terminal_id: terminalId })
+            });
+
+            if (response.ok) {
+                alert('Терминал отвязан!');
+                loadTerminals();
+                if (selectedTerminal === terminalId) {
+                    document.getElementById('statsSection').classList.add('hidden');
+                    selectedTerminal = null;
+                }
+            } else {
+                const data = await response.json();
+                alert('Ошибка: ' + data.error);
+            }
         }
 
         async function showStats(terminalId) {
