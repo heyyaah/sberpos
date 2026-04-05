@@ -2002,6 +2002,7 @@ def cabinet_page():
             font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
+            padding-bottom: 100px; /* Отступ для баннера */
         }
         .header {
             background: rgba(255, 255, 255, 0.95);
@@ -2525,6 +2526,29 @@ def cabinet_page():
             }
         }, 5000);
     </script>
+    
+    <!-- Баннер скачивания -->
+    <div style="position: fixed; bottom: 0; left: 0; right: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; box-shadow: 0 -4px 20px rgba(0,0,0,0.3); z-index: 1000;">
+        <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: center; align-items: center; gap: 30px; flex-wrap: wrap;">
+            <div style="color: white; font-size: 18px; font-weight: bold;">
+                📱 Скачать приложение:
+            </div>
+            <a href="https://github.com/heyyaah/sberpos/raw/main/cabinet_unsigned.apk" 
+               style="background: white; color: #667eea; padding: 12px 30px; border-radius: 25px; text-decoration: none; font-weight: bold; display: flex; align-items: center; gap: 10px; transition: transform 0.2s, box-shadow 0.2s;"
+               onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.3)'"
+               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 10px rgba(0,0,0,0.2)'">
+                <span style="font-size: 24px;">🤖</span>
+                <span>Android APK</span>
+            </a>
+            <a href="https://github.com/heyyaah/sberpos/raw/main/dist/SberScreen-Cashier.exe" 
+               style="background: white; color: #667eea; padding: 12px 30px; border-radius: 25px; text-decoration: none; font-weight: bold; display: flex; align-items: center; gap: 10px; transition: transform 0.2s, box-shadow 0.2s;"
+               onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.3)'"
+               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 10px rgba(0,0,0,0.2)'">
+                <span style="font-size: 24px;">💻</span>
+                <span>Windows EXE</span>
+            </a>
+        </div>
+    </div>
 </body>
 </html>
     ''')
