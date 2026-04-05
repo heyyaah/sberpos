@@ -1798,8 +1798,13 @@ def cabinet_page():
     <div class="header">
         <div class="container">
             <h1>💼 Личный кабинет СберЭкран</h1>
-            <p id="username"></p>
-            <p id="balance" class="hidden" style="font-size: 24px; margin-top: 10px;">💰 Баланс: <span id="balanceAmount">0</span> ₽</p>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <p id="username"></p>
+                    <p id="balance" class="hidden" style="font-size: 24px; margin-top: 10px;">💰 Баланс: <span id="balanceAmount">0</span> ₽</p>
+                </div>
+                <button id="logoutBtn" class="hidden" onclick="logout()" style="background: rgba(255,255,255,0.2); color: white; border: 2px solid white; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 16px;">Выйти</button>
+            </div>
         </div>
     </div>
 
@@ -1858,6 +1863,7 @@ def cabinet_page():
                 currentUser = username;
                 document.getElementById('username').textContent = 'Пользователь: ' + username;
                 document.getElementById('balance').classList.remove('hidden');
+                document.getElementById('logoutBtn').classList.remove('hidden');
                 document.getElementById('authSection').classList.add('hidden');
                 document.getElementById('bindSection').classList.remove('hidden');
                 document.getElementById('terminalsSection').classList.remove('hidden');
@@ -2008,6 +2014,10 @@ def cabinet_page():
         }
 
         async function closeShift() {
+            if (!confirm('Вы точно хотите закончить смену?')) {
+                return;
+            }
+            
             const response = await fetch('/cabinet/shift/close', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2022,6 +2032,22 @@ def cabinet_page():
             } else {
                 const data = await response.json();
                 alert('Ошибка: ' + data.error);
+            }
+        }
+
+        function logout() {
+            if (confirm('Вы точно хотите выйти?')) {
+                currentUser = null;
+                selectedTerminal = null;
+                document.getElementById('username').textContent = '';
+                document.getElementById('balance').classList.add('hidden');
+                document.getElementById('logoutBtn').classList.add('hidden');
+                document.getElementById('authSection').classList.remove('hidden');
+                document.getElementById('bindSection').classList.add('hidden');
+                document.getElementById('terminalsSection').classList.add('hidden');
+                document.getElementById('statsSection').classList.add('hidden');
+                document.getElementById('authUsername').value = '';
+                document.getElementById('authPassword').value = '';
             }
         }
 
