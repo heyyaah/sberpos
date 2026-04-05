@@ -427,17 +427,26 @@ def callback_handler(call):
             save_tickets(tickets)
             
             bot.answer_callback_query(call.id, "✅ Заявка принята")
-            bot.edit_message_reply_markup(chat_id, call.message.message_id, 
-                                         reply_markup=kb_ticket_actions(ticket_id, chat_id))
+            try:
+                bot.edit_message_reply_markup(chat_id, call.message.message_id, 
+                                             reply_markup=kb_ticket_actions(ticket_id, chat_id))
+            except Exception as e:
+                print(f"Error editing message: {e}")
             
             # Уведомить пользователя
-            user_id = ticket.get('user_id')
-            bot.send_message(user_id, f"✅ Ваша заявка #{ticket_id} принята в работу")
+            try:
+                user_id = ticket.get('user_id')
+                bot.send_message(user_id, f"✅ Ваша заявка #{ticket_id} принята в работу")
+            except Exception as e:
+                print(f"Error notifying user: {e}")
     
     elif data.startswith('reply_'):
         ticket_id = data.split('_')[1]
         user_states[chat_id] = {'state': 'replying', 'ticket_id': ticket_id}
-        bot.answer_callback_query(call.id)
+        try:
+            bot.answer_callback_query(call.id)
+        except Exception as e:
+            print(f"Error answering callback: {e}")
         bot.send_message(chat_id, f"💬 Введите ответ на заявку #{ticket_id}:")
     
     elif data.startswith('close_'):
@@ -451,12 +460,22 @@ def callback_handler(call):
             ticket['closed_by'] = chat_id
             save_tickets(tickets)
             
-            bot.answer_callback_query(call.id, "✅ Заявка закрыта")
-            bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=None)
+            try:
+                bot.answer_callback_query(call.id, "✅ Заявка закрыта")
+            except Exception as e:
+                print(f"Error answering callback: {e}")
+            
+            try:
+                bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=None)
+            except Exception as e:
+                print(f"Error editing message: {e}")
             
             # Уведомить пользователя
-            user_id = ticket.get('user_id')
-            bot.send_message(user_id, f"✅ Ваша заявка #{ticket_id} закрыта")
+            try:
+                user_id = ticket.get('user_id')
+                bot.send_message(user_id, f"✅ Ваша заявка #{ticket_id} закрыта")
+            except Exception as e:
+                print(f"Error notifying user: {e}")
     
     elif data.startswith('block_'):
         ticket_id = data.split('_')[1]
