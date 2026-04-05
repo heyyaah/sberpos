@@ -698,6 +698,16 @@ def payload_handler():
         content = data.get('content', '')
         buttons = data.get('buttons', '')
         
+        # Проверяем открыта ли смена если пытаемся отправить оплату
+        if state == 'pay':
+            owner_id = terminals[terminal_id].get('owner_id')
+            if owner_id:
+                # Проверяем есть ли открытая смена
+                shift = shifts.get(terminal_id, {})
+                if not (shift.get('opened_at') and not shift.get('closed_at')):
+                    print(f"❌ [PAYLOAD] {terminal_id}: Cannot send payment - shift is closed")
+                    return jsonify({'error': 'Смена закрыта', 'status': 'error'}), 400
+        
         terminals[terminal_id]['current_payload'] = {
             'state': state,
             'data': {
