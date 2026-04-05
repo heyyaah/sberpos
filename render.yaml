@@ -33,6 +33,7 @@ services:
     env: python
     buildCommand: pip install -r support_requirements.txt
     startCommand: python support_bot.py
+    healthCheckPath: null
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
