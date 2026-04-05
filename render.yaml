@@ -12,7 +12,7 @@ services:
         value: 5001
     
   # Telegram Bot (Terminal Management)
-  - type: web
+  - type: worker
     name: sberpos-bot
     env: python
     buildCommand: pip install -r requirements.txt
@@ -26,7 +26,7 @@ services:
         value: https://sberpos-api.onrender.com
   
   # Support Bot (Customer Support)
-  - type: web
+  - type: worker
     name: sberpos-support-bot
     env: python
     buildCommand: pip install -r support_requirements.txt
