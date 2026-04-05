@@ -150,7 +150,16 @@ class TerminalAPI:
             'buttons': '        :card\n         :cash\n      :cancel'
         }
         ok, r = self._post('/admin/set_payload', payload, lambda: self.send_pay(amount))
-        return (True, f"✅ Оплата {amount}₽ отправлена") if ok else (False, f"❌ Ошибка: {getattr(r, 'status_code', r)}")
+        if ok:
+            return True, f"✅ Оплата {amount}₽ отправлена"
+        else:
+            # Пробуем распарсить JSON ответ с ошибкой
+            try:
+                error_data = r.json()
+                error_msg = error_data.get('error', 'Неизвестная ошибка')
+                return False, f"❌ {error_msg}"
+            except:
+                return False, f"❌ Ошибка: {getattr(r, 'status_code', r)}"
 
     def cancel_pay(self):
         if not self._ensure_auth(): return False, "❌ Ошибка авторизации"
