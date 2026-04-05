@@ -938,6 +938,44 @@ def delete_terminal(session):
     
     return jsonify({'success': True, 'status': 'success', 'message': f'Terminal {terminal_id} deleted'}), 200
 
+@app.route('/admin/clear_all_terminals', methods=['POST'])
+@require_auth
+def clear_all_terminals(session):
+    """Удалить ВСЕ терминалы (осторожно!)"""
+    global terminals, device_states, last_seen, auto_reset_timers
+    
+    count = len(terminals)
+    
+    # Отменяем все таймеры
+    for timer in auto_reset_timers.values():
+        timer.cancel()
+    
+    # Очищаем все словари
+    terminals.clear()
+    device_states.clear()
+    last_seen.clear()
+    auto_reset_timers.clear()
+    
+    # Удаляем из БД если используется
+    if DATABASE_URL and PSYCOPG_AVAILABLE:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('DELETE FROM terminals')
+            conn.commit()
+            cur.close()
+            conn.close()
+            print(f"🗑️  [CLEAR ALL] Deleted {count} terminals from database")
+        except Exception as e:
+            print(f"❌ Ошибка очистки БД: {e}")
+    
+    # Сохраняем пустой файл
+    save_terminals()
+    
+    print(f"🗑️  [CLEAR ALL] Deleted all {count} terminals")
+    
+    return jsonify({'success': True, 'status': 'success', 'message': f'Deleted {count} terminals'}), 200
+
 @app.route('/api/qr/password', methods=['GET'])
 def qr_password():
     """Получить QR-пароль для терминала"""
