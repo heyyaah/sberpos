@@ -1327,6 +1327,61 @@ def qr_status():
         'terminal_id': terminal_id
     }), 200
 
+@app.route('/api/qr/confirm', methods=['POST'])
+def confirm_qr_public():
+    """Публичное подтверждение QR-оплаты с проверкой ключа"""
+    data = request.json
+    terminal_id = data.get('terminal_id')
+    key = data.get('key')
+    approved = data.get('approved', True)
+    
+    if not terminal_id or not key:
+        return jsonify({'error': 'Missing terminal_id or key', 'success': False}), 400
+    
+    if terminal_id not in terminals:
+        return jsonify({'error': 'Terminal not found', 'success': False}), 404
+    
+    # Проверяем ключ
+    expected_key = terminals[terminal_id].get('qr_password', '')
+    if key != expected_key:
+        print(f"❌ [QR CONFIRM] {terminal_id}: Invalid key {key} (expected {expected_key})")
+        return jsonify({'error': 'Invalid payment key', 'success': False}), 403
+    
+    # Проверяем что терминал в состоянии оплаты
+    current_state = terminals[terminal_id].get('current_payload', {}).get('state', 'idle')
+    if current_state not in ['pay', 'payPending']:
+        print(f"⚠️  [QR CONFIRM] {terminal_id}: not in payment state (current: {current_state})")
+        return jsonify({'error': 'Not in payment state', 'success': False}), 400
+    
+    # Проверяем что оплата еще не обработана
+    if terminals[terminal_id].get('payment_processed', False):
+        print(f"⚠️  [QR CONFIRM] {terminal_id}: payment already processed")
+        return jsonify({'error': 'Payment already processed', 'success': False}), 400
+    
+    # Помечаем оплату как обработанную
+    terminals[terminal_id]['payment_processed'] = True
+    
+    # Устанавливаем статус подтверждения QR
+    terminals[terminal_id]['qr_status'] = {
+        'pending': False,
+        'approved': approved
+    }
+    
+    # Инвалидируем ключ (генерируем новый чтобы старый больше не работал)
+    terminals[terminal_id]['qr_password'] = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+    
+    # Записываем транзакцию
+    amount = terminals[terminal_id].get('current_payload', {}).get('data', {}).get('amount', '0')
+    add_transaction(terminal_id, amount, 'qr', 'success' if approved else 'failed')
+    
+    print(f"📱 [QR CONFIRM] {terminal_id}: {'✅ approved' if approved else '❌ declined'} via public API (key: {key})")
+    print(f"   QR status will auto-reset to idle in 5s")
+    
+    # Автоматически сбросить в idle через 5 секунд
+    auto_reset_to_idle(terminal_id, delay=5)
+    
+    return jsonify({'success': True, 'status': 'success'}), 200
+
 @app.route('/admin/confirm_qr', methods=['POST'])
 @require_auth
 def confirm_qr(session):
@@ -1369,6 +1424,314 @@ def confirm_qr(session):
     auto_reset_to_idle(terminal_id, delay=5)
     
     return jsonify({'success': True, 'status': 'success'}), 200
+
+@app.route('/pay/<terminal_id>/key=<key>')
+def payment_page_with_key(terminal_id, key):
+    """Страница оплаты с проверкой ключа"""
+    
+    if terminal_id not in terminals:
+        return render_template_string('''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>СберЭкран - Ошибка</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 { color: #333; margin-bottom: 20px; font-size: 24px; }
+        p { color: #666; font-size: 16px; line-height: 1.6; }
+        .icon { font-size: 64px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">❌</div>
+        <h1>Терминал не найден</h1>
+        <p>Терминал {{ terminal_id }} не существует.</p>
+    </div>
+</body>
+</html>
+        ''', terminal_id=terminal_id), 404
+    
+    terminal = terminals[terminal_id]
+    current = terminal.get('current_payload', {'state': 'idle', 'data': {}})
+    state = current.get('state', 'idle')
+    
+    # Проверяем что терминал в состоянии оплаты
+    if state not in ['pay', 'payPending']:
+        return render_template_string('''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>СберЭкран - Оплата</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 { color: #333; margin-bottom: 20px; font-size: 24px; }
+        p { color: #666; font-size: 16px; line-height: 1.6; }
+        .icon { font-size: 64px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">⏳</div>
+        <h1>Нет активных оплат</h1>
+        <p>Оплата на терминале {{ terminal_id }} не активна. Пожалуйста, запустите оплату заново.</p>
+    </div>
+</body>
+</html>
+        ''', terminal_id=terminal_id), 404
+    
+    # Проверяем ключ
+    expected_key = terminal.get('qr_password', '')
+    if key != expected_key:
+        print(f"❌ [PAY] {terminal_id}: Invalid key {key} (expected {expected_key})")
+        return render_template_string('''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>СберЭкран - Ошибка</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 { color: #333; margin-bottom: 20px; font-size: 24px; }
+        p { color: #666; font-size: 16px; line-height: 1.6; }
+        .icon { font-size: 64px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">🔒</div>
+        <h1>Неверный ключ оплаты</h1>
+        <p>QR-код недействителен или устарел. Пожалуйста, отсканируйте новый QR-код.</p>
+    </div>
+</body>
+</html>
+        '''), 403
+    
+    # Ключ верный - показываем страницу оплаты
+    amount = current.get('data', {}).get('amount', '0')
+    
+    print(f"✅ [PAY] {terminal_id}: Valid key, showing payment page for {amount}₽")
+    
+    return render_template_string('''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>СберЭкран - Оплата {{ amount }} ₽</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .logo { font-size: 48px; margin-bottom: 20px; }
+        h1 { color: #333; margin-bottom: 10px; font-size: 28px; }
+        .amount {
+            font-size: 48px;
+            font-weight: bold;
+            color: #667eea;
+            margin: 20px 0;
+        }
+        .terminal { color: #999; font-size: 14px; margin-bottom: 30px; }
+        .btn {
+            width: 100%;
+            padding: 18px;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 12px;
+        }
+        .btn-pay {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-pay:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4); }
+        .btn-pay:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn-cancel {
+            background: #f5f5f5;
+            color: #666;
+        }
+        .btn-cancel:hover { background: #e0e0e0; }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 16px;
+            display: none;
+        }
+        .status.success { background: #d4edda; color: #155724; display: block; }
+        .status.error { background: #f8d7da; color: #721c24; display: block; }
+        .status.waiting { background: #fff3cd; color: #856404; display: block; }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+            display: none;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">💳</div>
+        <h1>Оплата по QR-коду</h1>
+        <div class="amount">{{ amount }} ₽</div>
+        <div class="terminal">Терминал: {{ terminal_id }}</div>
+        
+        <button class="btn btn-pay" id="payBtn" onclick="pay()">Оплатить</button>
+        <button class="btn btn-cancel" onclick="cancel()">Отменить</button>
+        
+        <div class="loader" id="loader"></div>
+        <div class="status" id="status"></div>
+    </div>
+
+    <script>
+        const terminalId = '{{ terminal_id }}';
+        const paymentKey = '{{ key }}';
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+        }
+
+        function showLoader(show) {
+            document.getElementById('loader').style.display = show ? 'block' : 'none';
+        }
+
+        async function pay() {
+            const btn = document.getElementById('payBtn');
+            btn.disabled = true;
+            showLoader(true);
+            showStatus('Обработка платежа...', 'waiting');
+
+            try {
+                // Отправляем запрос на подтверждение QR-оплаты
+                const response = await fetch('/api/qr/confirm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        terminal_id: terminalId,
+                        key: paymentKey,
+                        approved: true 
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showLoader(false);
+                    showStatus('✅ Оплата успешна!', 'success');
+                    setTimeout(() => {
+                        window.close();
+                    }, 2000);
+                } else {
+                    showLoader(false);
+                    showStatus('❌ ' + (data.error || 'Ошибка оплаты'), 'error');
+                    btn.disabled = false;
+                }
+            } catch (error) {
+                showLoader(false);
+                showStatus('❌ Ошибка соединения', 'error');
+                btn.disabled = false;
+            }
+        }
+
+        function cancel() {
+            window.close();
+        }
+    </script>
+</body>
+</html>
+    ''', terminal_id=terminal_id, amount=amount, key=key)
 
 @app.route('/pay')
 def universal_payment_page():
@@ -1776,14 +2139,14 @@ def qr_generate():
     if not QRCODE_AVAILABLE:
         return jsonify({'error': 'QR code generation not available'}), 503
     
-    # Получаем текущую сумму оплаты
+    # Получаем текущую сумму оплаты и ключ
     current = terminal.get('current_payload', {'state': 'idle', 'data': {}})
     amount = current.get('data', {}).get('amount', '0')
+    qr_key = terminal.get('qr_password', '000000')  # Используем сгенерированный ключ
     
-    # Генерируем URL для оплаты
-    # Используем универсальный URL /pay который автоматически найдет активный терминал
+    # Генерируем URL для оплаты с терминалом и ключом
     base_url = request.host_url.rstrip('/')
-    payment_url = f"{base_url}/pay"
+    payment_url = f"{base_url}/pay/{terminal_id}/key={qr_key}"
     
     # Генерируем QR-код
     qr = qrcode.QRCode(
@@ -1802,7 +2165,7 @@ def qr_generate():
     img.save(img_io, 'PNG')
     img_io.seek(0)
     
-    print(f"🔲 [QR GENERATE] {terminal_id}: Generated QR for {payment_url}")
+    print(f"🔲 [QR GENERATE] {terminal_id}: Generated QR for {payment_url} (key: {qr_key})")
     
     return send_file(img_io, mimetype='image/png')
 
