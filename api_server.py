@@ -2271,6 +2271,26 @@ def cabinet_page():
             <h3 style="margin-top: 20px;">Управление сменой</h3>
             <div id="shiftControls"></div>
             
+            <h3 style="margin-top: 20px;">💳 Касса</h3>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
+                <button class="btn btn-success" onclick="sendPayment(100)">100 ₽</button>
+                <button class="btn btn-success" onclick="sendPayment(200)">200 ₽</button>
+                <button class="btn btn-success" onclick="sendPayment(500)">500 ₽</button>
+                <button class="btn btn-success" onclick="sendPayment(1000)">1000 ₽</button>
+                <button class="btn btn-success" onclick="sendPayment(2000)">2000 ₽</button>
+                <button class="btn btn-success" onclick="sendPayment(5000)">5000 ₽</button>
+            </div>
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <input type="number" id="customAmount" placeholder="Своя сумма" style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px;">
+                <button class="btn btn-primary" onclick="sendCustomPayment()">Отправить</button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                <button class="btn" style="background: #28a745;" onclick="confirmCard(true)">✅ Подтвердить карту</button>
+                <button class="btn" style="background: #dc3545;" onclick="confirmCard(false)">❌ Отклонить карту</button>
+                <button class="btn" style="background: #ffc107; color: black;" onclick="cancelPayment()">🚫 Отменить операцию</button>
+                <button class="btn" style="background: #17a2b8;" onclick="getStatus()">📊 Статус</button>
+            </div>
+            
             <h3 style="margin-top: 20px;">Последние транзакции</h3>
             <div id="transactionsList"></div>
         </div>
@@ -2512,6 +2532,108 @@ def cabinet_page():
                 document.getElementById('statsSection').classList.add('hidden');
                 document.getElementById('authUsername').value = '';
                 document.getElementById('authPassword').value = '';
+            }
+        }
+
+        // Функции кассы
+        async function sendPayment(amount) {
+            if (!selectedTerminal) {
+                alert('Выберите терминал');
+                return;
+            }
+
+            const response = await fetch('/admin/set_device_payload_full', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    terminal_id: selectedTerminal,
+                    state: 'pay',
+                    amount: amount.toString()
+                })
+            });
+
+            if (response.ok) {
+                alert(`✅ Оплата ${amount} ₽ отправлена`);
+            } else {
+                const data = await response.json();
+                alert('❌ Ошибка: ' + data.error);
+            }
+        }
+
+        async function sendCustomPayment() {
+            const amount = parseInt(document.getElementById('customAmount').value);
+            if (!amount || amount <= 0) {
+                alert('Введите корректную сумму');
+                return;
+            }
+            await sendPayment(amount);
+            document.getElementById('customAmount').value = '';
+        }
+
+        async function confirmCard(approved) {
+            if (!selectedTerminal) {
+                alert('Выберите терминал');
+                return;
+            }
+
+            const response = await fetch('/admin/confirm_card', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    terminal_id: selectedTerminal,
+                    approved: approved
+                })
+            });
+
+            if (response.ok) {
+                alert(approved ? '✅ Карта подтверждена' : '❌ Карта отклонена');
+            } else {
+                alert('Ошибка');
+            }
+        }
+
+        async function cancelPayment() {
+            if (!selectedTerminal) {
+                alert('Выберите терминал');
+                return;
+            }
+
+            const response = await fetch('/admin/set_device_payload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    terminal_id: selectedTerminal,
+                    payload: 'idle'
+                })
+            });
+
+            if (response.ok) {
+                alert('🚫 Операция отменена');
+            } else {
+                alert('Ошибка');
+            }
+        }
+
+        async function getStatus() {
+            if (!selectedTerminal) {
+                alert('Выберите терминал');
+                return;
+            }
+
+            const response = await fetch('/admin/status');
+            if (response.ok) {
+                const data = await response.json();
+                const device = data.devices.find(d => d.terminal_id === selectedTerminal);
+                if (device) {
+                    const payload = device.current_payload || {};
+                    const state = payload.state || 'unknown';
+                    const amount = payload.data?.amount || 'N/A';
+                    alert(`📊 Статус терминала ${selectedTerminal}\\nСостояние: ${state}\\nСумма: ${amount} ₽`);
+                } else {
+                    alert('Терминал не найден');
+                }
+            } else {
+                alert('Ошибка получения статуса');
             }
         }
 
