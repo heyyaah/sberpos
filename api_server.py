@@ -3098,6 +3098,7 @@ def cabinet_page():
             <div id="balance" class="hidden balance-display">
                 💰 <span id="balanceAmount">0</span> ₽
             </div>
+            <button id="terminalsBtn" class="hidden btn" onclick="showTerminals()" style="padding: 10px 20px; background: #6c757d; color: white;">📱 Терминалы</button>
             <button id="analyticsBtn" class="hidden btn btn-primary" onclick="showAnalytics()" style="padding: 10px 20px;">📊 Аналитика</button>
             <button id="faqBtn" class="hidden btn" onclick="showFAQ()" style="padding: 10px 20px; background: #17a2b8; color: white;">❓ FAQ</button>
             <button id="newsBtn" class="hidden btn" onclick="showNews()" style="padding: 10px 20px; background: #ffc107; color: black;">📰 Новости</button>
@@ -3278,6 +3279,7 @@ def cabinet_page():
                 currentUser = username;
                 document.getElementById('username').textContent = 'Пользователь: ' + username;
                 document.getElementById('balance').classList.remove('hidden');
+                document.getElementById('terminalsBtn').classList.remove('hidden');
                 document.getElementById('analyticsBtn').classList.remove('hidden');
                 document.getElementById('faqBtn').classList.remove('hidden');
                 document.getElementById('newsBtn').classList.remove('hidden');
@@ -3929,6 +3931,15 @@ def cabinet_page():
                 `;
                 faqList.appendChild(div);
             });
+        }
+
+        // Терминалы
+        function showTerminals() {
+            document.getElementById('terminalsSection').classList.remove('hidden');
+            document.getElementById('statsSection').classList.add('hidden');
+            document.getElementById('analyticsSection').classList.add('hidden');
+            document.getElementById('faqSection').classList.add('hidden');
+            document.getElementById('newsSection').classList.add('hidden');
         }
 
         // Новости
