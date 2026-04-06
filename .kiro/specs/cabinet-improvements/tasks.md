@@ -272,7 +272,7 @@
 
 ## Task 11: Интегрировать чат с поддержкой
 **Priority:** High
-**Status:** pending
+**Status:** completed
 **Requirement:** Requirement 12
 
 ### Description

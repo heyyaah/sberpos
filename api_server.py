@@ -130,10 +130,21 @@ def init_db():
             )
         ''')
         
+        # Таблица сообщений чата поддержки
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS support_messages (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(100) NOT NULL,
+                message TEXT NOT NULL,
+                is_admin BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         conn.commit()
         cur.close()
         conn.close()
-        print("✅ База данных инициализирована (6 таблиц)")
+        print("✅ База данных инициализирована (7 таблиц)")
     except Exception as e:
         print(f"❌ Ошибка инициализации БД: {e}")
 
@@ -2205,6 +2216,72 @@ def export_transactions():
         
         return response
 
+@app.route('/cabinet/support/messages', methods=['GET'])
+def get_support_messages():
+    """Получить сообщения чата поддержки"""
+    session = get_session(request)
+    if not session or session.get('type') != 'user':
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    username = session['username']
+    
+    # Пробуем загрузить из БД
+    messages = []
+    if DATABASE_URL and PSYCOPG_AVAILABLE:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('''
+                SELECT message, is_admin, created_at 
+                FROM support_messages 
+                WHERE username = %s 
+                ORDER BY created_at ASC
+            ''', (username,))
+            rows = cur.fetchall()
+            messages = [{'message': r[0], 'is_admin': r[1], 'timestamp': r[2].isoformat()} for r in rows]
+            cur.close()
+            conn.close()
+        except Exception as e:
+            print(f"❌ Ошибка загрузки сообщений: {e}")
+    
+    return jsonify({'messages': messages}), 200
+
+@app.route('/cabinet/support/send', methods=['POST'])
+def send_support_message():
+    """Отправить сообщение в поддержку"""
+    session = get_session(request)
+    if not session or session.get('type') != 'user':
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    username = session['username']
+    data = request.json
+    message = data.get('message', '').strip()
+    
+    if not message:
+        return jsonify({'error': 'Empty message'}), 400
+    
+    # Сохраняем в БД
+    if DATABASE_URL and PSYCOPG_AVAILABLE:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('''
+                INSERT INTO support_messages (username, message, is_admin, created_at)
+                VALUES (%s, %s, FALSE, CURRENT_TIMESTAMP)
+            ''', (username, message))
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            print(f"💬 [SUPPORT] {username}: {message}")
+            
+            return jsonify({'success': True}), 200
+        except Exception as e:
+            print(f"❌ Ошибка сохранения сообщения: {e}")
+            return jsonify({'error': str(e)}), 500
+    
+    return jsonify({'error': 'Database not available'}), 500
+
 @app.route('/static/logo.jpg')
 def serve_logo():
     """Отдать логотип"""
@@ -2500,6 +2577,88 @@ def cabinet_page():
             transform: scale(1.1);
             box-shadow: 0 6px 20px rgba(0,0,0,0.3);
         }
+        
+        /* Чат поддержки */
+        .support-chat-btn {
+            position: fixed;
+            bottom: 170px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.3s;
+            z-index: 1001;
+        }
+        .support-chat-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+        .support-chat-window {
+            position: fixed;
+            bottom: 240px;
+            right: 20px;
+            width: 350px;
+            height: 500px;
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            display: none;
+            flex-direction: column;
+            z-index: 1002;
+            border: 2px solid var(--border-color);
+        }
+        .support-chat-window.open {
+            display: flex;
+        }
+        .support-chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 18px 18px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .support-chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .support-message {
+            padding: 10px 15px;
+            border-radius: 12px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .support-message.user {
+            background: #667eea;
+            color: white;
+            align-self: flex-end;
+        }
+        .support-message.admin {
+            background: var(--stat-box-bg);
+            color: var(--text-primary);
+            align-self: flex-start;
+        }
+        .support-chat-input {
+            display: flex;
+            gap: 10px;
+            padding: 15px;
+            border-top: 2px solid var(--border-color);
+        }
+        .support-chat-input input {
+            flex: 1;
+            margin-bottom: 0;
+        }
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
@@ -2511,6 +2670,21 @@ def cabinet_page():
 </head>
 <body>
     <button class="theme-toggle" onclick="toggleTheme()" title="Переключить тему">🌙</button>
+    
+    <!-- Чат поддержки -->
+    <button class="support-chat-btn hidden" id="supportChatBtn" onclick="toggleSupportChat()">💬</button>
+    <div class="support-chat-window" id="supportChatWindow">
+        <div class="support-chat-header">
+            <span style="font-weight: bold;">💬 Поддержка</span>
+            <button onclick="toggleSupportChat()" style="background: none; border: none; color: white; font-size: 24px; cursor: pointer;">×</button>
+        </div>
+        <div class="support-chat-messages" id="supportMessages"></div>
+        <div class="support-chat-input">
+            <input type="text" id="supportMessageInput" placeholder="Напишите сообщение..." onkeypress="if(event.key==='Enter') sendSupportMessage()">
+            <button class="btn btn-primary" onclick="sendSupportMessage()" style="padding: 10px 20px; margin-bottom: 0;">➤</button>
+        </div>
+    </div>
+    
     <div class="header">
         <div class="logo-container">
             <img src="/static/logo.jpg" alt="СберЭкран" class="logo-img">
@@ -2688,6 +2862,7 @@ def cabinet_page():
                 document.getElementById('username').textContent = 'Пользователь: ' + username;
                 document.getElementById('balance').classList.remove('hidden');
                 document.getElementById('analyticsBtn').classList.remove('hidden');
+                document.getElementById('supportChatBtn').classList.remove('hidden');
                 document.getElementById('logoutBtn').classList.remove('hidden');
                 document.getElementById('authSection').classList.add('hidden');
                 document.getElementById('bindSection').classList.remove('hidden');
@@ -3223,6 +3398,62 @@ def cabinet_page():
             }
             window.location.href = `/cabinet/export/transactions?format=${format}&terminal_id=${selectedTerminal}`;
         }
+
+        // Чат поддержки
+        function toggleSupportChat() {
+            const chatWindow = document.getElementById('supportChatWindow');
+            chatWindow.classList.toggle('open');
+            if (chatWindow.classList.contains('open')) {
+                loadSupportMessages();
+            }
+        }
+
+        async function loadSupportMessages() {
+            const response = await fetch('/cabinet/support/messages');
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            const messagesDiv = document.getElementById('supportMessages');
+            messagesDiv.innerHTML = '';
+            
+            data.messages.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = 'support-message ' + (msg.is_admin ? 'admin' : 'user');
+                div.textContent = msg.message;
+                messagesDiv.appendChild(div);
+            });
+            
+            // Прокрутка вниз
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        async function sendSupportMessage() {
+            const input = document.getElementById('supportMessageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            const response = await fetch('/cabinet/support/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message })
+            });
+            
+            if (response.ok) {
+                input.value = '';
+                loadSupportMessages();
+            } else {
+                alert('Ошибка отправки сообщения');
+            }
+        }
+
+        // Автообновление сообщений каждые 5 секунд если чат открыт
+        setInterval(() => {
+            const chatWindow = document.getElementById('supportChatWindow');
+            if (chatWindow && chatWindow.classList.contains('open')) {
+                loadSupportMessages();
+            }
+        }, 5000);
 
         // Функции кассы
         async function sendPayment(amount) {
