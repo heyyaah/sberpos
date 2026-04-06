@@ -133,7 +133,7 @@
 
 ## Task 6: Реализовать графики транзакций
 **Priority:** High
-**Status:** pending
+**Status:** completed
 **Requirement:** Requirement 1
 
 ### Description
@@ -161,7 +161,7 @@
 
 ## Task 7: Добавить рейтинг терминалов
 **Priority:** Medium
-**Status:** pending
+**Status:** completed
 **Requirement:** Requirement 2
 
 ### Description
@@ -188,7 +188,7 @@
 
 ## Task 8: Реализовать анализ конверсии
 **Priority:** Medium
-**Status:** pending
+**Status:** completed
 **Requirement:** Requirement 3
 
 ### Description

@@ -2020,6 +2020,89 @@ def toggle_favorite(terminal_id):
     
     return jsonify({'success': True, 'is_favorite': is_favorite}), 200
 
+@app.route('/cabinet/analytics', methods=['GET'])
+def cabinet_analytics():
+    """Получить аналитику по всем терминалам пользователя"""
+    session = get_session(request)
+    if not session or session.get('type') != 'user':
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    username = session['username']
+    user_terminals = users[username]['terminals']
+    
+    period = request.args.get('period', 'day')  # day, week, month
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    
+    # Собираем все транзакции пользователя
+    all_transactions = []
+    for terminal_id in user_terminals:
+        if terminal_id in transactions:
+            for t in transactions[terminal_id]:
+                t_copy = t.copy()
+                t_copy['terminal_id'] = terminal_id
+                all_transactions.append(t_copy)
+    
+    # Фильтруем по датам если указаны
+    if date_from:
+        all_transactions = [t for t in all_transactions if t['timestamp'] >= date_from]
+    if date_to:
+        all_transactions = [t for t in all_transactions if t['timestamp'] <= date_to + 'T23:59:59']
+    
+    # Группируем по периодам
+    from collections import defaultdict
+    grouped = defaultdict(lambda: {'success': 0, 'failed': 0, 'amount': 0})
+    
+    for t in all_transactions:
+        dt = datetime.fromisoformat(t['timestamp'])
+        
+        if period == 'day':
+            key = dt.strftime('%Y-%m-%d')
+        elif period == 'week':
+            key = dt.strftime('%Y-W%W')
+        else:  # month
+            key = dt.strftime('%Y-%m')
+        
+        if t['status'] == 'success':
+            grouped[key]['success'] += 1
+            grouped[key]['amount'] += float(t['amount'])
+        else:
+            grouped[key]['failed'] += 1
+    
+    # Топ терминалов по выручке
+    terminal_revenue = defaultdict(lambda: {'amount': 0, 'count': 0})
+    for t in all_transactions:
+        if t['status'] == 'success':
+            terminal_revenue[t['terminal_id']]['amount'] += float(t['amount'])
+            terminal_revenue[t['terminal_id']]['count'] += 1
+    
+    top_terminals = sorted(
+        [{'terminal_id': k, 'amount': v['amount'], 'count': v['count']} 
+         for k, v in terminal_revenue.items()],
+        key=lambda x: x['amount'],
+        reverse=True
+    )[:10]
+    
+    # Конверсия по типам оплаты
+    by_type = defaultdict(lambda: {'success': 0, 'failed': 0})
+    for t in all_transactions:
+        by_type[t['type']][t['status']] += 1
+    
+    conversion = {}
+    for payment_type, stats in by_type.items():
+        total = stats['success'] + stats['failed']
+        conversion[payment_type] = {
+            'rate': (stats['success'] / total * 100) if total > 0 else 0,
+            'success': stats['success'],
+            'failed': stats['failed']
+        }
+    
+    return jsonify({
+        'chart_data': dict(grouped),
+        'top_terminals': top_terminals,
+        'conversion': conversion
+    }), 200
+
 @app.route('/static/logo.jpg')
 def serve_logo():
     """Отдать логотип"""
@@ -2039,6 +2122,7 @@ def cabinet_page():
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Личный кабинет - СберЭкран</title>
     <link rel="icon" type="image/jpeg" href="/static/logo.jpg">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         :root {
             --bg-gradient-start: #667eea;
@@ -2335,6 +2419,7 @@ def cabinet_page():
             <div id="balance" class="hidden balance-display">
                 💰 <span id="balanceAmount">0</span> ₽
             </div>
+            <button id="analyticsBtn" class="hidden btn btn-primary" onclick="showAnalytics()" style="padding: 10px 20px;">📊 Аналитика</button>
             <button id="logoutBtn" class="hidden logout-btn" onclick="logout()">Выйти</button>
         </div>
     </div>
@@ -2355,6 +2440,31 @@ def cabinet_page():
             <input type="text" id="bindTerminalId" placeholder="ID терминала (TRM-####)">
             <input type="password" id="bindPassword" placeholder="Пароль терминала">
             <button class="btn btn-primary" onclick="bindTerminal()">Привязать</button>
+        </div>
+
+        <!-- Аналитика -->
+        <div id="analyticsSection" class="card hidden">
+            <h2>📊 Аналитика</h2>
+            
+            <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                <select id="analyticsPeriod" onchange="loadAnalytics()" style="padding: 10px; border: 2px solid var(--border-color); border-radius: 8px; background: var(--input-bg); color: var(--text-primary);">
+                    <option value="day">По дням</option>
+                    <option value="week">По неделям</option>
+                    <option value="month">По месяцам</option>
+                </select>
+                <input type="date" id="analyticsDateFrom" onchange="loadAnalytics()" style="padding: 10px; border: 2px solid var(--border-color); border-radius: 8px; background: var(--input-bg); color: var(--text-primary);">
+                <input type="date" id="analyticsDateTo" onchange="loadAnalytics()" style="padding: 10px; border: 2px solid var(--border-color); border-radius: 8px; background: var(--input-bg); color: var(--text-primary);">
+            </div>
+            
+            <div style="background: var(--card-bg); padding: 20px; border-radius: 16px; margin-bottom: 20px;">
+                <canvas id="transactionsChart" style="max-height: 400px;"></canvas>
+            </div>
+            
+            <h3>🏆 Топ терминалов по выручке</h3>
+            <div id="terminalRanking" style="margin-bottom: 20px;"></div>
+            
+            <h3>📈 Конверсия платежей</h3>
+            <div id="conversionStats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;"></div>
         </div>
 
         <!-- Список терминалов -->
@@ -2463,6 +2573,7 @@ def cabinet_page():
                 currentUser = username;
                 document.getElementById('username').textContent = 'Пользователь: ' + username;
                 document.getElementById('balance').classList.remove('hidden');
+                document.getElementById('analyticsBtn').classList.remove('hidden');
                 document.getElementById('logoutBtn').classList.remove('hidden');
                 document.getElementById('authSection').classList.add('hidden');
                 document.getElementById('bindSection').classList.remove('hidden');
@@ -2841,13 +2952,149 @@ def cabinet_page():
                 selectedTerminal = null;
                 document.getElementById('username').textContent = '';
                 document.getElementById('balance').classList.add('hidden');
+                document.getElementById('analyticsBtn').classList.add('hidden');
                 document.getElementById('logoutBtn').classList.add('hidden');
                 document.getElementById('authSection').classList.remove('hidden');
                 document.getElementById('bindSection').classList.add('hidden');
                 document.getElementById('terminalsSection').classList.add('hidden');
                 document.getElementById('statsSection').classList.add('hidden');
+                document.getElementById('analyticsSection').classList.add('hidden');
                 document.getElementById('authUsername').value = '';
                 document.getElementById('authPassword').value = '';
+            }
+        }
+
+        // Аналитика
+        let transactionsChart = null;
+
+        function showAnalytics() {
+            document.getElementById('analyticsSection').classList.remove('hidden');
+            document.getElementById('terminalsSection').classList.add('hidden');
+            document.getElementById('statsSection').classList.add('hidden');
+            
+            // Устанавливаем даты по умолчанию (последние 30 дней)
+            const today = new Date();
+            const monthAgo = new Date(today);
+            monthAgo.setDate(monthAgo.getDate() - 30);
+            
+            document.getElementById('analyticsDateFrom').value = monthAgo.toISOString().split('T')[0];
+            document.getElementById('analyticsDateTo').value = today.toISOString().split('T')[0];
+            
+            loadAnalytics();
+        }
+
+        async function loadAnalytics() {
+            const period = document.getElementById('analyticsPeriod').value;
+            const dateFrom = document.getElementById('analyticsDateFrom').value;
+            const dateTo = document.getElementById('analyticsDateTo').value;
+            
+            const response = await fetch(`/cabinet/analytics?period=${period}&date_from=${dateFrom}&date_to=${dateTo}`);
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            
+            // График транзакций
+            const chartData = data.chart_data;
+            const labels = Object.keys(chartData).sort();
+            const successData = labels.map(l => chartData[l].success);
+            const failedData = labels.map(l => chartData[l].failed);
+            
+            const ctx = document.getElementById('transactionsChart');
+            
+            if (transactionsChart) {
+                transactionsChart.destroy();
+            }
+            
+            transactionsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Успешные',
+                            data: successData,
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Неудачные',
+                            data: failedData,
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary')
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--text-secondary')
+                            },
+                            grid: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--text-secondary')
+                            },
+                            grid: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--border-color')
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Топ терминалов
+            const ranking = document.getElementById('terminalRanking');
+            ranking.innerHTML = '';
+            data.top_terminals.forEach((t, index) => {
+                const div = document.createElement('div');
+                div.style.cssText = 'padding: 15px; background: var(--stat-box-bg); border-radius: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;';
+                div.innerHTML = `
+                    <div>
+                        <span style="font-size: 24px; font-weight: bold; color: ${index === 0 ? '#ffc107' : index === 1 ? '#c0c0c0' : index === 2 ? '#cd7f32' : '#667eea'};">${index + 1}.</span>
+                        <span style="font-weight: bold; color: var(--text-primary); margin-left: 10px;">${t.terminal_id}</span>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 20px; font-weight: bold; color: #28a745;">${t.amount.toFixed(2)} ₽</div>
+                        <div style="font-size: 14px; color: var(--text-secondary);">${t.count} транзакций</div>
+                    </div>
+                `;
+                ranking.appendChild(div);
+            });
+            
+            // Конверсия
+            const conversion = document.getElementById('conversionStats');
+            conversion.innerHTML = '';
+            
+            const typeNames = { card: 'Карта', face: 'Лицо', qr: 'QR' };
+            
+            for (const [type, stats] of Object.entries(data.conversion)) {
+                const div = document.createElement('div');
+                div.className = 'stat-box';
+                const isLow = stats.rate < 80;
+                div.innerHTML = `
+                    <div style="font-size: 36px; font-weight: bold; color: ${isLow ? '#dc3545' : '#28a745'};">${stats.rate.toFixed(1)}%</div>
+                    <div class="stat-label">${typeNames[type] || type}</div>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 5px;">
+                        ✅ ${stats.success} / ❌ ${stats.failed}
+                    </div>
+                `;
+                conversion.appendChild(div);
             }
         }
 
