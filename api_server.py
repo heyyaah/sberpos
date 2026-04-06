@@ -1599,13 +1599,22 @@ def qr_initiate():
     if bypass_card_check:
         # Запускаем таймер автоподтверждения через 3 секунды
         def auto_confirm():
+            print(f"⏱️  [BYPASS] {terminal_id}: Starting 3s countdown...")
             time.sleep(3)
             if terminal_id in terminals:
                 term = terminals[terminal_id]
                 current = term.get('current_payload', {}).get('state', 'idle')
+                print(f"⏱️  [BYPASS] {terminal_id}: After 3s - state={current}, processed={term.get('payment_processed', False)}")
+                
                 # Проверяем что терминал все еще в payPending и оплата не обработана
                 if current == 'payPending' and not term.get('payment_processed', False):
+                    # Обновляем card_status
                     term['card_status'] = {
+                        'pending': False,
+                        'approved': True
+                    }
+                    # Обновляем qr_status (для совместимости)
+                    term['qr_status'] = {
                         'pending': False,
                         'approved': True
                     }
@@ -1614,6 +1623,8 @@ def qr_initiate():
                     print(f"💳 [BYPASS] {terminal_id}: Auto-approved payment after 3s (bypass enabled)")
                     # Автоматически сбросить в idle через 5 секунд
                     auto_reset_to_idle(terminal_id, delay=5)
+                else:
+                    print(f"⚠️  [BYPASS] {terminal_id}: Conditions not met - state={current}, processed={term.get('payment_processed', False)}")
         
         threading.Thread(target=auto_confirm, daemon=True).start()
         print(f"⏱️  [BYPASS] {terminal_id}: Auto-confirm timer started (3s)")
