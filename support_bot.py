@@ -286,13 +286,20 @@ def handle_text(message):
                     })
                     save_tickets(tickets)
                     
-                    # Отправить пользователю
-                    user_id = ticket.get('user_id')
-                    try:
-                        bot.send_message(user_id, f"💬 Ответ на заявку #{ticket_id}:\n\n{message.text}")
-                        bot.send_message(chat_id, "✅ Ответ отправлен")
-                    except Exception as e:
-                        bot.send_message(chat_id, f"❌ Не удалось отправить: {e}")
+                    # Отправить пользователю (если это не веб-заявка)
+                    user_id = ticket.get('user_id', 0)
+                    from_web = ticket.get('from_web', False)
+                    
+                    if from_web and user_id == 0:
+                        # Заявка из веба без telegram_id - ответ только в tickets.json
+                        bot.send_message(chat_id, "✅ Ответ сохранен (пользователь увидит его в веб-кабинете)")
+                    else:
+                        # Обычная заявка - отправляем в Telegram
+                        try:
+                            bot.send_message(user_id, f"💬 Ответ на заявку #{ticket_id}:\n\n{message.text}")
+                            bot.send_message(chat_id, "✅ Ответ отправлен")
+                        except Exception as e:
+                            bot.send_message(chat_id, f"❌ Не удалось отправить: {e}")
                     
                     # Уведомить назначенного админа если это не он
                     assigned_to = ticket.get('assigned_to')
@@ -388,13 +395,20 @@ def handle_text(message):
             })
             save_tickets(tickets)
             
-            # Отправить пользователю
-            user_id = ticket.get('user_id')
-            try:
-                bot.send_message(user_id, f"💬 Ответ на заявку #{ticket_id}:\n\n{message.text}")
-                bot.send_message(chat_id, "✅ Ответ отправлен", reply_markup=kb_admin())
-            except Exception as e:
-                bot.send_message(chat_id, f"❌ Не удалось отправить ответ: {e}", reply_markup=kb_admin())
+            # Отправить пользователю (если это не веб-заявка)
+            user_id = ticket.get('user_id', 0)
+            from_web = ticket.get('from_web', False)
+            
+            if from_web and user_id == 0:
+                # Заявка из веба без telegram_id - ответ только в tickets.json
+                bot.send_message(chat_id, "✅ Ответ сохранен (пользователь увидит его в веб-кабинете)", reply_markup=kb_admin())
+            else:
+                # Обычная заявка - отправляем в Telegram
+                try:
+                    bot.send_message(user_id, f"💬 Ответ на заявку #{ticket_id}:\n\n{message.text}")
+                    bot.send_message(chat_id, "✅ Ответ отправлен", reply_markup=kb_admin())
+                except Exception as e:
+                    bot.send_message(chat_id, f"❌ Не удалось отправить ответ: {e}", reply_markup=kb_admin())
             
             # Уведомить назначенного админа если это не он
             assigned_to = ticket.get('assigned_to')
@@ -617,7 +631,19 @@ def callback_handler(call):
 def show_ticket_to_admin(admin_id, ticket_id, ticket):
     status_emoji = {'open': '🆕', 'in_progress': '⏳', 'closed': '✅'}.get(ticket.get('status'), '❓')
     
+    # Проверяем откуда заявка
+    from_web = ticket.get('from_web', False)
+    source_emoji = "🌐" if from_web else "📱"
+    
     user_info = f"@{ticket.get('username')}" if ticket.get('username') else ticket.get('first_name', 'Unknown')
+    user_id = ticket.get('user_id', 0)
+    
+    # Если заявка из веба и нет telegram_id, показываем только username
+    if from_web and user_id == 0:
+        user_display = f"{user_info} (веб-кабинет)"
+    else:
+        user_display = f"{user_info} (ID: {user_id})"
+    
     assigned = ticket.get('assigned_to')
     assigned_info = ""
     
@@ -628,8 +654,8 @@ def show_ticket_to_admin(admin_id, ticket_id, ticket):
         assigned_info = f"\n👤 Назначен: {assigned_name}"
     
     text = (
-        f"{status_emoji} Заявка #{ticket_id}\n"
-        f"От: {user_info} (ID: {ticket.get('user_id')})\n"
+        f"{status_emoji} {source_emoji} Заявка #{ticket_id}\n"
+        f"От: {user_display}\n"
         f"Статус: {ticket.get('status', 'open')}{assigned_info}\n"
         f"Создана: {datetime.fromtimestamp(ticket.get('created_at', 0)).strftime('%d.%m.%Y %H:%M')}\n\n"
         f"📝 {ticket.get('description', '')}"
