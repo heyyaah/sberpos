@@ -3146,19 +3146,10 @@ def cabinet_page():
         <div class="notifications-list" id="notificationsList"></div>
     </div>
     
-    <!-- Чат поддержки -->
-    <button class="support-chat-btn hidden" id="supportChatBtn" onclick="toggleSupportChat()">💬</button>
-    <div class="support-chat-window" id="supportChatWindow">
-        <div class="support-chat-header">
-            <span style="font-weight: bold;">💬 Поддержка</span>
-            <button onclick="toggleSupportChat()" style="background: none; border: none; color: white; font-size: 24px; cursor: pointer;">×</button>
-        </div>
-        <div class="support-chat-messages" id="supportMessages"></div>
-        <div class="support-chat-input">
-            <input type="text" id="supportMessageInput" placeholder="Напишите сообщение..." onkeypress="if(event.key==='Enter') sendSupportMessage()">
-            <button class="btn btn-primary" onclick="sendSupportMessage()" style="padding: 10px 20px; margin-bottom: 0;">➤</button>
-        </div>
-    </div>
+    <!-- Кнопка поддержки (ссылка на Telegram бота) -->
+    <a href="https://t.me/sberpos_support_bot" target="_blank" class="support-chat-btn hidden" id="supportChatBtn" title="Написать в поддержку">
+        💬
+    </a>
     
     <div class="header">
         <div class="logo-container">
@@ -3898,86 +3889,6 @@ def cabinet_page():
             }
             window.location.href = `/cabinet/export/transactions?format=${format}&terminal_id=${selectedTerminal}`;
         }
-
-        // Чат поддержки
-        function toggleSupportChat() {
-            const chatWindow = document.getElementById('supportChatWindow');
-            chatWindow.classList.toggle('open');
-            if (chatWindow.classList.contains('open')) {
-                loadSupportMessages();
-            }
-        }
-
-        async function loadSupportMessages() {
-            const response = await fetch('/cabinet/support/messages');
-            
-            if (response.status === 403) {
-                const data = await response.json();
-                if (data.blocked) {
-                    const messagesDiv = document.getElementById('supportMessages');
-                    messagesDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #dc3545; font-weight: bold;">🚫 Вы заблокированы в боте</div>';
-                    document.getElementById('supportMessageInput').disabled = true;
-                    return;
-                }
-            }
-            
-            if (!response.ok) return;
-            
-            const data = await response.json();
-            const messagesDiv = document.getElementById('supportMessages');
-            messagesDiv.innerHTML = '';
-            
-            if (data.messages.length === 0) {
-                messagesDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Напишите первое сообщение</div>';
-                return;
-            }
-            
-            data.messages.forEach(msg => {
-                const div = document.createElement('div');
-                div.className = 'support-message ' + (msg.is_admin ? 'admin' : 'user');
-                div.textContent = msg.message;
-                messagesDiv.appendChild(div);
-            });
-            
-            // Прокрутка вниз
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-
-        async function sendSupportMessage() {
-            const input = document.getElementById('supportMessageInput');
-            const message = input.value.trim();
-            
-            if (!message || input.disabled) return;
-            
-            const response = await fetch('/cabinet/support/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message })
-            });
-            
-            if (response.status === 403) {
-                const data = await response.json();
-                alert(data.error || 'Вы заблокированы в боте');
-                input.disabled = true;
-                return;
-            }
-            
-            if (response.ok) {
-                input.value = '';
-                loadSupportMessages();
-            } else {
-                const data = await response.json();
-                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
-            }
-        }
-
-        // Автообновление сообщений каждые 5 секунд если чат открыт
-        setInterval(() => {
-            const chatWindow = document.getElementById('supportChatWindow');
-            if (chatWindow && chatWindow.classList.contains('open')) {
-                loadSupportMessages();
-            }
-        }, 5000);
 
         // FAQ
         async function showFAQ() {
