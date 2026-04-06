@@ -1079,11 +1079,24 @@ def confirm_card(session):
     amount = terminals[terminal_id].get('current_payload', {}).get('data', {}).get('amount', '0')
     add_transaction(terminal_id, amount, 'card', 'success' if approved else 'failed')
     
-    print(f"💳 [CARD] {terminal_id}: {'✅ approved' if approved else '❌ declined'} (pending=False)")
-    print(f"   Card status will auto-reset to idle in 5s")
-    
-    # Автоматически сбросить в idle через 5 секунд
-    auto_reset_to_idle(terminal_id, delay=5)
+    if approved:
+        print(f"💳 [CARD] {terminal_id}: ✅ approved (pending=False)")
+        print(f"   Card status will auto-reset to idle in 5s")
+        # Автоматически сбросить в idle через 5 секунд
+        auto_reset_to_idle(terminal_id, delay=5)
+    else:
+        print(f"💳 [CARD] {terminal_id}: ❌ declined (pending=False)")
+        # При отклонении показываем экран неудачи и быстрее возвращаемся в idle
+        terminals[terminal_id]['current_payload'] = {
+            'state': 'paymentFailed',
+            'data': {
+                'amount': amount,
+                'content': 'Оплата отклонена',
+                'buttons': ''
+            }
+        }
+        print(f"   Showing paymentFailed screen, will auto-reset to idle in 3s")
+        auto_reset_to_idle(terminal_id, delay=3)
     
     return jsonify({'success': True, 'status': 'success'}), 200
 
@@ -1122,11 +1135,24 @@ def confirm_face(session):
     amount = terminals[terminal_id].get('current_payload', {}).get('data', {}).get('amount', '0')
     add_transaction(terminal_id, amount, 'face', 'success' if approved else 'failed')
     
-    print(f"🙂 [FACE] {terminal_id}: {'✅ approved' if approved else '❌ declined'} (pending=False)")
-    print(f"   Card status will auto-reset to idle in 5s")
-    
-    # Автоматически сбросить в idle через 5 секунд
-    auto_reset_to_idle(terminal_id, delay=5)
+    if approved:
+        print(f"🙂 [FACE] {terminal_id}: ✅ approved (pending=False)")
+        print(f"   Card status will auto-reset to idle in 5s")
+        # Автоматически сбросить в idle через 5 секунд
+        auto_reset_to_idle(terminal_id, delay=5)
+    else:
+        print(f"🙂 [FACE] {terminal_id}: ❌ declined (pending=False)")
+        # При отклонении показываем экран неудачи и быстрее возвращаемся в idle
+        terminals[terminal_id]['current_payload'] = {
+            'state': 'paymentFailed',
+            'data': {
+                'amount': amount,
+                'content': 'Оплата отклонена',
+                'buttons': ''
+            }
+        }
+        print(f"   Showing paymentFailed screen, will auto-reset to idle in 3s")
+        auto_reset_to_idle(terminal_id, delay=3)
     
     return jsonify({'success': True, 'status': 'success'}), 200
 
