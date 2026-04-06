@@ -2746,6 +2746,90 @@ def cabinet_page():
             flex: 1;
             margin-bottom: 0;
         }
+        
+        /* Уведомления */
+        .notifications-btn {
+            position: fixed;
+            top: 20px;
+            right: 100px;
+            background: var(--card-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 50px;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 24px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            z-index: 1001;
+        }
+        .notifications-btn:hover {
+            transform: scale(1.1);
+        }
+        .notifications-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #dc3545;
+            color: white;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .notifications-panel {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            width: 350px;
+            max-height: 500px;
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            display: none;
+            flex-direction: column;
+            z-index: 1002;
+            border: 2px solid var(--border-color);
+        }
+        .notifications-panel.open {
+            display: flex;
+        }
+        .notifications-header {
+            padding: 15px;
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .notifications-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        .notification-item {
+            padding: 15px;
+            background: var(--stat-box-bg);
+            border-radius: 12px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .notification-item:hover {
+            transform: translateX(-5px);
+        }
+        .notification-item.error {
+            border-left-color: #dc3545;
+        }
+        .notification-item.warning {
+            border-left-color: #ffc107;
+        }
+        .notification-item.success {
+            border-left-color: #28a745;
+        }
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
@@ -2757,6 +2841,19 @@ def cabinet_page():
 </head>
 <body>
     <button class="theme-toggle" onclick="toggleTheme()" title="Переключить тему">🌙</button>
+    
+    <!-- Уведомления -->
+    <button class="notifications-btn hidden" id="notificationsBtn" onclick="toggleNotifications()">
+        🔔
+        <span class="notifications-badge hidden" id="notificationsBadge">0</span>
+    </button>
+    <div class="notifications-panel" id="notificationsPanel">
+        <div class="notifications-header">
+            <span style="font-weight: bold; color: var(--text-primary);">🔔 Уведомления</span>
+            <button onclick="clearNotifications()" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 14px;">Очистить</button>
+        </div>
+        <div class="notifications-list" id="notificationsList"></div>
+    </div>
     
     <!-- Чат поддержки -->
     <button class="support-chat-btn hidden" id="supportChatBtn" onclick="toggleSupportChat()">💬</button>
@@ -2966,6 +3063,7 @@ def cabinet_page():
                 document.getElementById('faqBtn').classList.remove('hidden');
                 document.getElementById('newsBtn').classList.remove('hidden');
                 document.getElementById('supportChatBtn').classList.remove('hidden');
+                document.getElementById('notificationsBtn').classList.remove('hidden');
                 document.getElementById('logoutBtn').classList.remove('hidden');
                 document.getElementById('authSection').classList.add('hidden');
                 document.getElementById('bindSection').classList.remove('hidden');
@@ -3348,6 +3446,7 @@ def cabinet_page():
                 document.getElementById('faqBtn').classList.add('hidden');
                 document.getElementById('newsBtn').classList.add('hidden');
                 document.getElementById('supportChatBtn').classList.add('hidden');
+                document.getElementById('notificationsBtn').classList.add('hidden');
                 document.getElementById('logoutBtn').classList.add('hidden');
                 document.getElementById('authSection').classList.remove('hidden');
                 document.getElementById('bindSection').classList.add('hidden');
@@ -3620,6 +3719,114 @@ def cabinet_page():
                 newsList.appendChild(div);
             });
         }
+
+        // Уведомления
+        let notifications = [];
+        let lastCheckedTerminals = {};
+
+        function toggleNotifications() {
+            const panel = document.getElementById('notificationsPanel');
+            panel.classList.toggle('open');
+            if (panel.classList.contains('open')) {
+                displayNotifications();
+            }
+        }
+
+        function addNotification(type, title, message, terminalId) {
+            const notification = {
+                id: Date.now(),
+                type: type,
+                title: title,
+                message: message,
+                terminalId: terminalId,
+                timestamp: new Date().toISOString()
+            };
+            
+            notifications.unshift(notification);
+            if (notifications.length > 20) {
+                notifications = notifications.slice(0, 20);
+            }
+            
+            updateNotificationBadge();
+            displayNotifications();
+        }
+
+        function updateNotificationBadge() {
+            const badge = document.getElementById('notificationsBadge');
+            if (notifications.length > 0) {
+                badge.textContent = notifications.length;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        function displayNotifications() {
+            const list = document.getElementById('notificationsList');
+            list.innerHTML = '';
+            
+            if (notifications.length === 0) {
+                list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет уведомлений</div>';
+                return;
+            }
+            
+            notifications.forEach(notif => {
+                const div = document.createElement('div');
+                div.className = 'notification-item ' + notif.type;
+                div.innerHTML = `
+                    <div style="font-weight: bold; color: var(--text-primary); margin-bottom: 5px;">${notif.title}</div>
+                    <div style="color: var(--text-secondary); font-size: 14px; margin-bottom: 5px;">${notif.message}</div>
+                    <div style="color: var(--text-secondary); font-size: 12px;">${new Date(notif.timestamp).toLocaleString()}</div>
+                `;
+                if (notif.terminalId) {
+                    div.onclick = () => {
+                        showStats(notif.terminalId);
+                        toggleNotifications();
+                    };
+                }
+                list.appendChild(div);
+            });
+        }
+
+        function clearNotifications() {
+            notifications = [];
+            updateNotificationBadge();
+            displayNotifications();
+        }
+
+        // Проверка состояния терминалов для уведомлений
+        async function checkTerminalsForNotifications() {
+            if (!currentUser) return;
+            
+            const response = await fetch('/cabinet/terminals');
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            
+            data.terminals.forEach(terminal => {
+                const terminalId = terminal.terminal_id;
+                const lastState = lastCheckedTerminals[terminalId] || {};
+                
+                // Проверка неудачных транзакций
+                if (terminal.current_state === 'idle' && lastState.current_state === 'pay') {
+                    // Возможно неудачная транзакция
+                    addNotification('error', '❌ Возможна неудачная транзакция', `Терминал ${terminalId} вернулся в idle`, terminalId);
+                }
+                
+                // Проверка долгой смены (больше 24 часов)
+                if (terminal.shift_opened) {
+                    // Упрощенная проверка - просто уведомляем если смена открыта
+                    if (!lastState.shift_opened) {
+                        addNotification('warning', '⏰ Смена открыта', `Терминал ${terminalId} - не забудьте закрыть смену`, terminalId);
+                    }
+                }
+                
+                lastCheckedTerminals[terminalId] = terminal;
+            });
+        }
+
+        // Проверяем терминалы каждые 30 секунд
+        setInterval(checkTerminalsForNotifications, 30000);
 
         // Функции кассы
         async function sendPayment(amount) {
