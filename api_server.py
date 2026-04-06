@@ -2432,28 +2432,45 @@ def send_support_message():
                 'from_web': True
             }
             
-            # Уведомляем админов через Telegram
+            print(f"🆕 [SUPPORT] Created new ticket #{user_ticket_id} from web for {username}")
+            
+            # Уведомляем админов через Telegram с кнопками
             try:
                 with open('users.json', 'r') as f:
                     bot_users = json.load(f)
                     admins = bot_users.get('admins', [])
                     
+                    print(f"📢 [SUPPORT] Notifying {len(admins)} admins about ticket #{user_ticket_id}")
+                    
+                    # Создаем inline клавиатуру с кнопками
+                    keyboard = {
+                        'inline_keyboard': [
+                            [{'text': '✅ Принять', 'callback_data': f'accept_{user_ticket_id}'}],
+                        ]
+                    }
+                    
                     for admin_id in admins:
                         try:
-                            requests.post(
+                            response = requests.post(
                                 f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage',
                                 json={
                                     'chat_id': admin_id,
-                                    'text': f"🆕 Новая заявка #{user_ticket_id} (из веб-кабинета)\n"
-                                           f"От: {username}\n"
+                                    'text': f"🆕 🌐 Заявка #{user_ticket_id}\n"
+                                           f"От: {username} (веб-кабинет)\n"
+                                           f"Статус: open\n"
                                            f"Создана: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
-                                           f"📝 {message}"
+                                           f"📝 {message}",
+                                    'reply_markup': keyboard
                                 }
                             )
-                        except Exception:
-                            pass
-            except Exception:
-                pass
+                            if response.status_code == 200:
+                                print(f"✅ [SUPPORT] Notified admin {admin_id}")
+                            else:
+                                print(f"❌ [SUPPORT] Failed to notify admin {admin_id}: {response.text}")
+                        except Exception as e:
+                            print(f"❌ [SUPPORT] Error notifying admin {admin_id}: {e}")
+            except Exception as e:
+                print(f"❌ [SUPPORT] Error loading admins: {e}")
         else:
             # Добавляем сообщение к существующей заявке
             tickets[user_ticket_id]['messages'].append({
@@ -2479,8 +2496,10 @@ def send_support_message():
                     pass
         
         # Сохраняем заявки
-        with open('tickets.json', 'w') as f:
+        with open('tickets.json', 'w', encoding='utf-8') as f:
             json.dump(tickets, f, ensure_ascii=False, indent=2)
+        
+        print(f"💾 [SUPPORT] Saved ticket #{user_ticket_id} to tickets.json")
         
         # Сохраняем в БД для отображения в веб-интерфейсе
         if DATABASE_URL and PSYCOPG_AVAILABLE:
