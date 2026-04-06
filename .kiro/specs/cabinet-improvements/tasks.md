@@ -215,7 +215,7 @@
 
 ## Task 9: Добавить экспорт отчетов
 **Priority:** Medium
-**Status:** pending
+**Status:** completed
 **Requirement:** Requirement 4
 
 ### Description

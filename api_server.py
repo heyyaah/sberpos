@@ -2103,6 +2103,108 @@ def cabinet_analytics():
         'conversion': conversion
     }), 200
 
+@app.route('/cabinet/export/transactions', methods=['GET'])
+def export_transactions():
+    """Экспорт транзакций в Excel или CSV"""
+    session = get_session(request)
+    if not session or session.get('type') != 'user':
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    username = session['username']
+    user_terminals = users[username]['terminals']
+    export_format = request.args.get('format', 'csv')  # csv или xlsx
+    terminal_id = request.args.get('terminal_id')  # опционально
+    
+    # Собираем транзакции
+    all_transactions = []
+    if terminal_id and terminal_id in user_terminals:
+        # Экспорт одного терминала
+        if terminal_id in transactions:
+            for t in transactions[terminal_id]:
+                t_copy = t.copy()
+                t_copy['terminal_id'] = terminal_id
+                all_transactions.append(t_copy)
+    else:
+        # Экспорт всех терминалов
+        for tid in user_terminals:
+            if tid in transactions:
+                for t in transactions[tid]:
+                    t_copy = t.copy()
+                    t_copy['terminal_id'] = tid
+                    all_transactions.append(t_copy)
+    
+    # Сортируем по дате
+    all_transactions.sort(key=lambda x: x['timestamp'], reverse=True)
+    
+    if export_format == 'xlsx':
+        # Excel экспорт
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill
+            
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Транзакции"
+            
+            # Заголовки
+            headers = ['Дата и время', 'Терминал', 'Сумма (₽)', 'Тип оплаты', 'Статус']
+            ws.append(headers)
+            
+            # Стиль заголовков
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="667eea", end_color="667eea", fill_type="solid")
+            
+            # Данные
+            for t in all_transactions:
+                ws.append([
+                    t['timestamp'],
+                    t['terminal_id'],
+                    float(t['amount']),
+                    t['type'],
+                    'Успешно' if t['status'] == 'success' else 'Неудачно'
+                ])
+            
+            # Сохраняем в память
+            output = BytesIO()
+            wb.save(output)
+            output.seek(0)
+            
+            response = make_response(output.read())
+            response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            response.headers['Content-Disposition'] = f'attachment; filename=transactions_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            
+            return response
+        except ImportError:
+            return jsonify({'error': 'openpyxl not installed'}), 500
+    
+    else:
+        # CSV экспорт
+        import csv
+        
+        output = BytesIO()
+        writer = csv.writer(output)
+        
+        # Заголовки
+        writer.writerow(['Дата и время', 'Терминал', 'Сумма (₽)', 'Тип оплаты', 'Статус'])
+        
+        # Данные
+        for t in all_transactions:
+            writer.writerow([
+                t['timestamp'],
+                t['terminal_id'],
+                t['amount'],
+                t['type'],
+                'Успешно' if t['status'] == 'success' else 'Неудачно'
+            ])
+        
+        output.seek(0)
+        response = make_response(output.read().decode('utf-8'))
+        response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        response.headers['Content-Disposition'] = f'attachment; filename=transactions_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+        
+        return response
+
 @app.route('/static/logo.jpg')
 def serve_logo():
     """Отдать логотип"""
@@ -2465,6 +2567,12 @@ def cabinet_page():
             
             <h3>📈 Конверсия платежей</h3>
             <div id="conversionStats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;"></div>
+            
+            <h3 style="margin-top: 30px;">📥 Экспорт данных</h3>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="btn btn-success" onclick="exportData('xlsx')">📊 Скачать Excel</button>
+                <button class="btn btn-primary" onclick="exportData('csv')">📄 Скачать CSV</button>
+            </div>
         </div>
 
         <!-- Список терминалов -->
@@ -2519,6 +2627,12 @@ def cabinet_page():
             </div>
             
             <h3 style="margin-top: 20px;">Последние транзакции</h3>
+            
+            <!-- Экспорт транзакций терминала -->
+            <div style="margin-bottom: 15px;">
+                <button class="btn" style="background: #28a745; color: white; padding: 8px 16px;" onclick="exportTerminalData('xlsx')">📊 Excel</button>
+                <button class="btn" style="background: #17a2b8; color: white; padding: 8px 16px;" onclick="exportTerminalData('csv')">📄 CSV</button>
+            </div>
             
             <!-- Поиск и фильтры -->
             <div style="margin-bottom: 20px; padding: 20px; background: var(--stat-box-bg); border-radius: 16px; border: 2px solid var(--stat-box-border);">
@@ -3096,6 +3210,18 @@ def cabinet_page():
                 `;
                 conversion.appendChild(div);
             }
+        }
+
+        function exportData(format) {
+            window.location.href = `/cabinet/export/transactions?format=${format}`;
+        }
+
+        function exportTerminalData(format) {
+            if (!selectedTerminal) {
+                alert('Выберите терминал');
+                return;
+            }
+            window.location.href = `/cabinet/export/transactions?format=${format}&terminal_id=${selectedTerminal}`;
         }
 
         // Функции кассы
