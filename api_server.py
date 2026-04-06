@@ -652,6 +652,41 @@ def card_status():
     current = terminal.get('current_payload', {'state': 'idle', 'data': {}})
     state = current.get('state', 'idle')
     
+    # Если карта приложена (source=sensor) и включен bypass, запускаем автоподтверждение
+    if source == 'sensor' and state == 'pay' and pending and not terminal.get('payment_processed', False):
+        bypass_card_check = terminal.get('bypass_card_check', False)
+        if bypass_card_check and not terminal.get('bypass_timer_started', False):
+            terminal['bypass_timer_started'] = True
+            current_amount = current.get('data', {}).get('amount', '0')
+            
+            def auto_confirm():
+                print(f"⏱️  [BYPASS] {terminal_id}: Starting 3s countdown (from card sensor)...")
+                time.sleep(3)
+                if terminal_id in terminals:
+                    term = terminals[terminal_id]
+                    curr_state = term.get('current_payload', {}).get('state', 'idle')
+                    print(f"⏱️  [BYPASS] {terminal_id}: After 3s - state={curr_state}, processed={term.get('payment_processed', False)}")
+                    
+                    # Проверяем что терминал все еще в pay и оплата не обработана
+                    if curr_state == 'pay' and not term.get('payment_processed', False):
+                        # Обновляем card_status
+                        term['card_status'] = {
+                            'pending': False,
+                            'approved': True
+                        }
+                        term['payment_processed'] = True
+                        term['bypass_timer_started'] = False
+                        add_transaction(terminal_id, current_amount, 'card', 'success')
+                        print(f"💳 [BYPASS] {terminal_id}: Auto-approved payment after 3s (bypass enabled)")
+                        # Автоматически сбросить в idle через 5 секунд
+                        auto_reset_to_idle(terminal_id, delay=5)
+                    else:
+                        term['bypass_timer_started'] = False
+                        print(f"⚠️  [BYPASS] {terminal_id}: Conditions not met - state={curr_state}, processed={term.get('payment_processed', False)}")
+            
+            threading.Thread(target=auto_confirm, daemon=True).start()
+            print(f"⏱️  [BYPASS] {terminal_id}: Auto-confirm timer started (3s) from card sensor")
+    
     print(f"📥 [CARD STATUS] {terminal_id}: state={state}, pending={pending}, approved={approved}, source={source}")
     
     return jsonify({
