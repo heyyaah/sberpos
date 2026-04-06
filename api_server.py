@@ -120,10 +120,20 @@ def init_db():
             )
         ''')
         
+        # Таблица избранных терминалов
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS favorite_terminals (
+                username VARCHAR(100) NOT NULL,
+                terminal_id VARCHAR(10) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (username, terminal_id)
+            )
+        ''')
+        
         conn.commit()
         cur.close()
         conn.close()
-        print("✅ База данных инициализирована (5 таблиц)")
+        print("✅ База данных инициализирована (6 таблиц)")
     except Exception as e:
         print(f"❌ Ошибка инициализации БД: {e}")
 
@@ -1809,6 +1819,7 @@ def cabinet_terminals():
     
     username = session['username']
     user_terminals = users[username]['terminals']
+    favorites = users[username].get('favorites', [])
     
     terminals_data = []
     for terminal_id in user_terminals:
@@ -1821,10 +1832,11 @@ def cabinet_terminals():
                 'current_state': terminal.get('current_payload', {}).get('state', 'idle'),
                 'shift_opened': bool(shift_status.get('opened_at') and not shift_status.get('closed_at')),
                 'shift_transactions': shift_status.get('transactions_count', 0),
-                'shift_total': shift_status.get('total_amount', 0)
+                'shift_total': shift_status.get('total_amount', 0),
+                'is_favorite': terminal_id in favorites
             })
     
-    return jsonify({'terminals': terminals_data}), 200
+    return jsonify({'terminals': terminals_data, 'favorites': favorites}), 200
 
 @app.route('/cabinet/stats/<terminal_id>', methods=['GET'])
 def cabinet_stats(terminal_id):
@@ -1977,6 +1989,37 @@ def cabinet_balance():
         'history': history[-20:]  # последние 20 операций
     }), 200
 
+@app.route('/cabinet/terminal/<terminal_id>/favorite', methods=['POST'])
+def toggle_favorite(terminal_id):
+    """Добавить/удалить терминал из избранного"""
+    session = get_session(request)
+    if not session or session.get('type') != 'user':
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    username = session['username']
+    
+    # Проверяем что терминал принадлежит пользователю
+    if terminal_id not in users[username]['terminals']:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    # Получаем текущий список избранных
+    favorites = users[username].get('favorites', [])
+    
+    # Переключаем статус
+    if terminal_id in favorites:
+        favorites.remove(terminal_id)
+        is_favorite = False
+    else:
+        favorites.append(terminal_id)
+        is_favorite = True
+    
+    users[username]['favorites'] = favorites
+    save_users()
+    
+    print(f"⭐ [FAVORITE] {username}: {terminal_id} {'added to' if is_favorite else 'removed from'} favorites")
+    
+    return jsonify({'success': True, 'is_favorite': is_favorite}), 200
+
 @app.route('/static/logo.jpg')
 def serve_logo():
     """Отдать логотип"""
@@ -1997,20 +2040,54 @@ def cabinet_page():
     <title>Личный кабинет - СберЭкран</title>
     <link rel="icon" type="image/jpeg" href="/static/logo.jpg">
     <style>
+        :root {
+            --bg-gradient-start: #667eea;
+            --bg-gradient-end: #764ba2;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --text-primary: #333;
+            --text-secondary: #666;
+            --border-color: #e0e0e0;
+            --input-bg: white;
+            --input-border: #e0e0e0;
+            --stat-box-bg: rgba(102, 126, 234, 0.1);
+            --stat-box-border: rgba(102, 126, 234, 0.2);
+            --terminal-card-bg: rgba(102, 126, 234, 0.05);
+            --transaction-success-bg: rgba(40, 167, 69, 0.1);
+            --transaction-failed-bg: rgba(220, 53, 69, 0.1);
+        }
+        
+        [data-theme="dark"] {
+            --bg-gradient-start: #1a1a2e;
+            --bg-gradient-end: #16213e;
+            --card-bg: rgba(30, 30, 46, 0.95);
+            --text-primary: #e0e0e0;
+            --text-secondary: #b0b0b0;
+            --border-color: #3a3a4a;
+            --input-bg: #2a2a3a;
+            --input-border: #3a3a4a;
+            --stat-box-bg: rgba(102, 126, 234, 0.2);
+            --stat-box-border: rgba(102, 126, 234, 0.3);
+            --terminal-card-bg: rgba(102, 126, 234, 0.15);
+            --transaction-success-bg: rgba(40, 167, 69, 0.2);
+            --transaction-failed-bg: rgba(220, 53, 69, 0.2);
+        }
+        
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
             min-height: 100vh;
             padding-bottom: 150px; /* Отступ для баннера */
+            transition: background 0.3s ease;
         }
         .header {
-            background: rgba(255, 255, 255, 0.95);
+            background: var(--card-bg);
             backdrop-filter: blur(10px);
-            color: #333;
+            color: var(--text-primary);
             padding: 30px 20px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.1);
             text-align: center;
+            transition: background 0.3s ease, color 0.3s ease;
         }
         .logo-container {
             display: flex;
@@ -2059,21 +2136,23 @@ def cabinet_page():
             padding: 30px 20px; 
         }
         .card {
-            background: rgba(255, 255, 255, 0.95);
+            background: var(--card-bg);
             backdrop-filter: blur(10px);
             border-radius: 20px;
             padding: 30px;
             margin-bottom: 25px;
             box-shadow: 0 8px 30px rgba(0,0,0,0.1);
-            border: 1px solid rgba(255, 255, 255, 0.5);
+            border: 1px solid var(--border-color);
+            transition: background 0.3s ease, border-color 0.3s ease;
         }
         .card h2 {
-            color: #333;
+            color: var(--text-primary);
             margin-bottom: 20px;
             font-size: 24px;
             display: flex;
             align-items: center;
             gap: 10px;
+            transition: color 0.3s ease;
         }
         .btn {
             padding: 14px 28px;
@@ -2127,8 +2206,8 @@ def cabinet_page():
             transform: translateY(-2px);
         }
         .terminal-card {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
-            border: 2px solid #e0e0e0;
+            background: var(--terminal-card-bg);
+            border: 2px solid var(--border-color);
             border-radius: 16px;
             padding: 20px;
             margin-bottom: 15px;
@@ -2154,11 +2233,11 @@ def cabinet_page():
             margin-top: 20px; 
         }
         .stat-box {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            background: var(--stat-box-bg);
             padding: 25px;
             border-radius: 16px;
             text-align: center;
-            border: 2px solid rgba(102, 126, 234, 0.2);
+            border: 2px solid var(--stat-box-border);
             transition: all 0.3s;
         }
         .stat-box:hover {
@@ -2174,20 +2253,22 @@ def cabinet_page():
             background-clip: text;
         }
         .stat-label { 
-            color: #666; 
+            color: var(--text-secondary); 
             font-size: 14px; 
             margin-top: 8px;
             font-weight: 500;
+            transition: color 0.3s ease;
         }
         input {
             width: 100%;
             padding: 14px 18px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid var(--input-border);
             border-radius: 12px;
             font-size: 16px;
             margin-bottom: 15px;
             transition: all 0.3s;
-            background: white;
+            background: var(--input-bg);
+            color: var(--text-primary);
         }
         input:focus {
             outline: none;
@@ -2208,12 +2289,30 @@ def cabinet_page():
             transform: translateX(5px);
         }
         .transaction.success { 
-            background: linear-gradient(135deg, rgba(40, 167, 69, 0.1) 0%, rgba(32, 201, 151, 0.1) 100%);
+            background: var(--transaction-success-bg);
             border-left: 4px solid #28a745;
         }
         .transaction.failed { 
-            background: linear-gradient(135deg, rgba(220, 53, 69, 0.1) 0%, rgba(200, 35, 51, 0.1) 100%);
+            background: var(--transaction-failed-bg);
             border-left: 4px solid #dc3545;
+        }
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--card-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 50px;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 24px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            z-index: 1001;
+        }
+        .theme-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
         }
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(20px); }
@@ -2225,6 +2324,7 @@ def cabinet_page():
     </style>
 </head>
 <body>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Переключить тему">🌙</button>
     <div class="header">
         <div class="logo-container">
             <img src="/static/logo.jpg" alt="СберЭкран" class="logo-img">
@@ -2382,16 +2482,51 @@ def cabinet_page():
 
             const list = document.getElementById('terminalsList');
             list.innerHTML = '';
+            
+            const favorites = data.favorites || [];
 
-            data.terminals.forEach(terminal => {
+            // Сортируем: избранные сначала
+            const sortedTerminals = data.terminals.sort((a, b) => {
+                if (a.is_favorite && !b.is_favorite) return -1;
+                if (!a.is_favorite && b.is_favorite) return 1;
+                return 0;
+            });
+
+            // Добавляем заголовок для избранных если есть
+            const hasFavorites = sortedTerminals.some(t => t.is_favorite);
+            if (hasFavorites) {
+                const favHeader = document.createElement('h3');
+                favHeader.textContent = '⭐ Избранные';
+                favHeader.style.color = 'var(--text-primary)';
+                favHeader.style.marginBottom = '15px';
+                list.appendChild(favHeader);
+            }
+
+            let regularHeaderAdded = false;
+
+            sortedTerminals.forEach(terminal => {
+                // Добавляем заголовок для обычных терминалов
+                if (!terminal.is_favorite && !regularHeaderAdded && hasFavorites) {
+                    const regHeader = document.createElement('h3');
+                    regHeader.textContent = '📱 Все терминалы';
+                    regHeader.style.color = 'var(--text-primary)';
+                    regHeader.style.marginTop = '30px';
+                    regHeader.style.marginBottom = '15px';
+                    list.appendChild(regHeader);
+                    regularHeaderAdded = true;
+                }
+                
                 const card = document.createElement('div');
                 card.className = 'terminal-card' + (terminal.shift_opened ? ' active' : '');
                 card.innerHTML = `
-                    <h3>${terminal.terminal_id}</h3>
-                    <p>Состояние: ${terminal.current_state}</p>
-                    <p>Смена: ${terminal.shift_opened ? '🟢 Открыта' : '🔴 Закрыта'}</p>
-                    <p>Транзакций в смене: ${terminal.shift_transactions}</p>
-                    <p>Сумма в смене: ${terminal.shift_total} ₽</p>
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <h3>${terminal.terminal_id}</h3>
+                        <button class="btn" style="padding: 5px 15px; font-size: 20px; background: ${terminal.is_favorite ? '#ffc107' : 'transparent'}; border: 2px solid ${terminal.is_favorite ? '#ffc107' : 'var(--border-color)'};" onclick="toggleFavorite('${terminal.terminal_id}', event)">${terminal.is_favorite ? '⭐' : '☆'}</button>
+                    </div>
+                    <p style="color: var(--text-secondary);">Состояние: ${terminal.current_state}</p>
+                    <p style="color: var(--text-secondary);">Смена: ${terminal.shift_opened ? '🟢 Открыта' : '🔴 Закрыта'}</p>
+                    <p style="color: var(--text-secondary);">Транзакций в смене: ${terminal.shift_transactions}</p>
+                    <p style="color: var(--text-secondary);">Сумма в смене: ${terminal.shift_total} ₽</p>
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
                         <button class="btn btn-primary" onclick="showStats('${terminal.terminal_id}')">Подробнее</button>
                         <button class="btn btn-danger" onclick="unbindTerminal('${terminal.terminal_id}')">Отвязать</button>
@@ -2399,6 +2534,20 @@ def cabinet_page():
                 `;
                 list.appendChild(card);
             });
+        }
+
+        async function toggleFavorite(terminalId, event) {
+            event.stopPropagation();
+            
+            const response = await fetch(`/cabinet/terminal/${terminalId}/favorite`, {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                loadTerminals();
+            } else {
+                alert('Ошибка при изменении избранного');
+            }
         }
 
         async function unbindTerminal(terminalId) {
@@ -2647,6 +2796,28 @@ def cabinet_page():
                 }
             }
         }, 5000);
+
+        // Темная тема
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            const themeBtn = document.querySelector('.theme-toggle');
+            
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            themeBtn.textContent = newTheme === 'dark' ? '☀️' : '🌙';
+        }
+
+        // Загрузка сохраненной темы
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            const themeBtn = document.querySelector('.theme-toggle');
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            if (themeBtn) {
+                themeBtn.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+            }
+        })();
     </script>
     
     <!-- Баннер скачивания -->
