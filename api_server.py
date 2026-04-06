@@ -845,12 +845,30 @@ def payload_handler():
         if state == 'pay':
             # Генерируем одноразовый пароль для QR-оплаты
             qr_password = ''.join([str(random.randint(0, 9)) for _ in range(6)])
-            terminals[terminal_id]['card_status'] = {
-                'pending': True,
-                'approved': False
-            }
+            
+            # Проверяем включен ли обход проверки карты/лица
+            bypass_card_check = terminals[terminal_id].get('bypass_card_check', False)
+            
+            if bypass_card_check:
+                # Автоматически подтверждаем оплату
+                terminals[terminal_id]['card_status'] = {
+                    'pending': False,
+                    'approved': True
+                }
+                terminals[terminal_id]['payment_processed'] = True
+                add_transaction(terminal_id, amount, 'card', 'success')
+                print(f"💳 [BYPASS] {terminal_id}: Auto-approved payment (bypass enabled)")
+                # Автоматически сбросить в idle через 5 секунд
+                auto_reset_to_idle(terminal_id, delay=5)
+            else:
+                # Обычная логика - требуется подтверждение
+                terminals[terminal_id]['card_status'] = {
+                    'pending': True,
+                    'approved': False
+                }
+                terminals[terminal_id]['payment_processed'] = False  # Сбрасываем флаг при новой оплате
+            
             terminals[terminal_id]['qr_password'] = qr_password  # Сохраняем пароль
-            terminals[terminal_id]['payment_processed'] = False  # Сбрасываем флаг при новой оплате
             print(f"🔐 [PAYLOAD] Generated QR password for {terminal_id}: {qr_password}")
         
         device_states[terminal_id] = {
@@ -924,12 +942,30 @@ def set_device_payload_full(session):
     if state == 'pay':
         # Генерируем одноразовый пароль для QR-оплаты
         qr_password = ''.join([str(random.randint(0, 9)) for _ in range(6)])
-        terminals[terminal_id]['card_status'] = {
-            'pending': True,
-            'approved': False
-        }
+        
+        # Проверяем включен ли обход проверки карты/лица
+        bypass_card_check = terminals[terminal_id].get('bypass_card_check', False)
+        
+        if bypass_card_check:
+            # Автоматически подтверждаем оплату
+            terminals[terminal_id]['card_status'] = {
+                'pending': False,
+                'approved': True
+            }
+            terminals[terminal_id]['payment_processed'] = True
+            add_transaction(terminal_id, amount, 'card', 'success')
+            print(f"💳 [BYPASS] {terminal_id}: Auto-approved payment (bypass enabled)")
+            # Автоматически сбросить в idle через 5 секунд
+            auto_reset_to_idle(terminal_id, delay=5)
+        else:
+            # Обычная логика - требуется подтверждение
+            terminals[terminal_id]['card_status'] = {
+                'pending': True,
+                'approved': False
+            }
+            terminals[terminal_id]['payment_processed'] = False
+        
         terminals[terminal_id]['qr_password'] = qr_password
-        terminals[terminal_id]['payment_processed'] = False
         print(f"🔐 [PAYLOAD_FULL] Generated QR password for {terminal_id}: {qr_password}")
     
     device_states[terminal_id] = {
@@ -982,6 +1018,24 @@ def set_bypass_shift_check(session):
     save_terminals()
     
     print(f"🔓 [BYPASS] {terminal_id}: Shift check bypass {'enabled' if enabled else 'disabled'}")
+    
+    return jsonify({'success': True, 'status': 'success'}), 200
+
+@app.route('/admin/set_bypass_card_check', methods=['POST'])
+@require_auth
+def set_bypass_card_check(session):
+    """Включить/выключить обход проверки карты/лица"""
+    data = request.json
+    terminal_id = data.get('terminal_id')
+    enabled = data.get('enabled', False)
+    
+    if terminal_id not in terminals:
+        return jsonify({'error': 'Terminal not found'}), 404
+    
+    terminals[terminal_id]['bypass_card_check'] = enabled
+    save_terminals()
+    
+    print(f"💳 [BYPASS] {terminal_id}: Card/face check bypass {'enabled' if enabled else 'disabled'}")
     
     return jsonify({'success': True, 'status': 'success'}), 200
 

@@ -181,6 +181,11 @@ class TerminalAPI:
         ok, r = self._post('/admin/set_bypass_shift_check', {'terminal_id': self.terminal_id, 'enabled': enabled}, lambda: self.set_bypass_shift_check(enabled))
         return (True, f"🔓 Обход проверки смены {'включен' if enabled else 'выключен'}") if ok else (False, f"❌ Ошибка: {getattr(r, 'status_code', r)}")
 
+    def set_bypass_card_check(self, enabled: bool):
+        if not self._ensure_auth(): return False, "❌ Ошибка авторизации"
+        ok, r = self._post('/admin/set_bypass_card_check', {'terminal_id': self.terminal_id, 'enabled': enabled}, lambda: self.set_bypass_card_check(enabled))
+        return (True, f"💳 Обход проверки карты/лица {'включен' if enabled else 'выключен'}") if ok else (False, f"❌ Ошибка: {getattr(r, 'status_code', r)}")
+
     def confirm_card(self, approved=True):
         if not self._ensure_auth(): return False, "❌ Ошибка авторизации"
         ok, r = self._post('/admin/confirm_card', {'terminal_id': self.terminal_id, 'approved': approved}, lambda: self.confirm_card(approved))
@@ -246,6 +251,7 @@ def kb_detailed():
     kb.row(KeyboardButton("📊 Статус"), KeyboardButton("🏓 Пинг"))
     kb.row(KeyboardButton("🙂 Face ON"), KeyboardButton("🙂 Face OFF"))
     kb.row(KeyboardButton("🔓 Обход смены"))
+    kb.row(KeyboardButton("💳 Обход карты/лица"))
     kb.row(KeyboardButton("⚙️ Auto-idle настройки"))
     kb.row(KeyboardButton("🔙 Назад"))
     return kb
@@ -253,6 +259,12 @@ def kb_detailed():
 def kb_bypass_shift():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row(KeyboardButton("🔓 Обход ВКЛ"), KeyboardButton("🔓 Обход ВЫКЛ"))
+    kb.row(KeyboardButton("🔙 Назад"))
+    return kb
+
+def kb_bypass_card():
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.row(KeyboardButton("💳 Обход ВКЛ"), KeyboardButton("💳 Обход ВЫКЛ"))
     kb.row(KeyboardButton("🔙 Назад"))
     return kb
 
@@ -608,6 +620,18 @@ def handle_all(message):
     elif text == "🔓 Обход ВЫКЛ":
         msg = bot.send_message(chat_id, "🔄...")
         run_async(api.set_bypass_shift_check, chat_id, msg.message_id, False)
+
+    elif text == "💳 Обход карты/лица":
+        bot.send_message(chat_id, "💳 *Обход проверки карты/лица*\n\nПозволяет пропускать подтверждение карты и лица.", 
+                        parse_mode='Markdown', reply_markup=kb_bypass_card())
+
+    elif text == "💳 Обход ВКЛ":
+        msg = bot.send_message(chat_id, "🔄...")
+        run_async(api.set_bypass_card_check, chat_id, msg.message_id, True)
+
+    elif text == "💳 Обход ВЫКЛ":
+        msg = bot.send_message(chat_id, "🔄...")
+        run_async(api.set_bypass_card_check, chat_id, msg.message_id, False)
 
 # ── Entry point ───────────────────────────────────────────────────────────
 app = Flask(__name__)
