@@ -2360,6 +2360,23 @@ def cabinet_page():
         <!-- Список терминалов -->
         <div id="terminalsSection" class="card hidden">
             <h2>Мои терминалы</h2>
+            
+            <!-- Панель быстрых действий -->
+            <div id="quickActions" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; padding: 20px; background: var(--stat-box-bg); border-radius: 16px; border: 2px solid var(--stat-box-border);">
+                <div style="text-align: center;">
+                    <div style="font-size: 32px; font-weight: bold; color: #667eea;" id="openShiftsCount">0</div>
+                    <div style="color: var(--text-secondary); font-size: 14px; margin-top: 5px;">Открытых смен</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 32px; font-weight: bold; color: #28a745;" id="activeTerminalsCount">0</div>
+                    <div style="color: var(--text-secondary); font-size: 14px; margin-top: 5px;">Активных терминалов</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 32px; font-weight: bold; color: #ffc107;" id="todayTransactionsCount">0</div>
+                    <div style="color: var(--text-secondary); font-size: 14px; margin-top: 5px;">Транзакций сегодня</div>
+                </div>
+            </div>
+            
             <div id="terminalsList"></div>
         </div>
 
@@ -2392,6 +2409,38 @@ def cabinet_page():
             </div>
             
             <h3 style="margin-top: 20px;">Последние транзакции</h3>
+            
+            <!-- Поиск и фильтры -->
+            <div style="margin-bottom: 20px; padding: 20px; background: var(--stat-box-bg); border-radius: 16px; border: 2px solid var(--stat-box-border);">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
+                    <input type="text" id="searchAmount" placeholder="Поиск по сумме" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+                    <input type="date" id="searchDateFrom" placeholder="От даты" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+                    <input type="date" id="searchDateTo" placeholder="До даты" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                    <label style="display: flex; align-items: center; gap: 5px; color: var(--text-primary);">
+                        <input type="checkbox" id="filterCard" checked onchange="applyFilters()"> Карта
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 5px; color: var(--text-primary);">
+                        <input type="checkbox" id="filterFace" checked onchange="applyFilters()"> Лицо
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 5px; color: var(--text-primary);">
+                        <input type="checkbox" id="filterQr" checked onchange="applyFilters()"> QR
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 5px; color: var(--text-primary);">
+                        <input type="checkbox" id="filterSuccess" checked onchange="applyFilters()"> Успешные
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 5px; color: var(--text-primary);">
+                        <input type="checkbox" id="filterFailed" checked onchange="applyFilters()"> Неудачные
+                    </label>
+                    <button class="btn" style="padding: 8px 16px; background: #dc3545; color: white;" onclick="clearFilters()">Очистить фильтры</button>
+                </div>
+                <div id="filterTags" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 15px;"></div>
+                <div style="margin-top: 10px; color: var(--text-secondary); font-size: 14px;">
+                    Найдено: <span id="transactionsCount">0</span> транзакций
+                </div>
+            </div>
+            
             <div id="transactionsList"></div>
         </div>
     </div>
@@ -2484,6 +2533,15 @@ def cabinet_page():
             list.innerHTML = '';
             
             const favorites = data.favorites || [];
+
+            // Обновляем счетчики быстрых действий
+            const openShifts = data.terminals.filter(t => t.shift_opened).length;
+            const activeTerminals = data.terminals.filter(t => t.current_state !== 'idle').length;
+            const todayTransactions = data.terminals.reduce((sum, t) => sum + t.shift_transactions, 0);
+            
+            document.getElementById('openShiftsCount').textContent = openShifts;
+            document.getElementById('activeTerminalsCount').textContent = activeTerminals;
+            document.getElementById('todayTransactionsCount').textContent = todayTransactions;
 
             // Сортируем: избранные сначала
             const sortedTerminals = data.terminals.sort((a, b) => {
@@ -2581,6 +2639,9 @@ def cabinet_page():
 
             const response = await fetch('/cabinet/stats/' + terminalId);
             const data = await response.json();
+            
+            // Сохраняем все транзакции для фильтрации
+            window.allTransactions = data.recent_transactions || [];
 
             // Статистика
             const statsGrid = document.getElementById('statsGrid');
@@ -2614,15 +2675,121 @@ def cabinet_page():
                 `;
             }
 
-            // Транзакции
+            // Применяем фильтры
+            applyFilters();
+            
+            // Добавляем обработчики поиска
+            document.getElementById('searchAmount').oninput = applyFilters;
+            document.getElementById('searchDateFrom').onchange = applyFilters;
+            document.getElementById('searchDateTo').onchange = applyFilters;
+        }
+
+        function applyFilters() {
+            if (!window.allTransactions) return;
+            
+            const searchAmount = document.getElementById('searchAmount').value.toLowerCase();
+            const dateFrom = document.getElementById('searchDateFrom').value;
+            const dateTo = document.getElementById('searchDateTo').value;
+            
+            const filterCard = document.getElementById('filterCard').checked;
+            const filterFace = document.getElementById('filterFace').checked;
+            const filterQr = document.getElementById('filterQr').checked;
+            const filterSuccess = document.getElementById('filterSuccess').checked;
+            const filterFailed = document.getElementById('filterFailed').checked;
+            
+            let filtered = window.allTransactions.filter(t => {
+                // Фильтр по сумме
+                if (searchAmount && !t.amount.toString().includes(searchAmount)) return false;
+                
+                // Фильтр по дате
+                const tDate = new Date(t.timestamp).toISOString().split('T')[0];
+                if (dateFrom && tDate < dateFrom) return false;
+                if (dateTo && tDate > dateTo) return false;
+                
+                // Фильтр по типу оплаты
+                if (!filterCard && t.type === 'card') return false;
+                if (!filterFace && t.type === 'face') return false;
+                if (!filterQr && t.type === 'qr') return false;
+                
+                // Фильтр по статусу
+                if (!filterSuccess && t.status === 'success') return false;
+                if (!filterFailed && t.status === 'failed') return false;
+                
+                return true;
+            });
+            
+            // Обновляем счетчик
+            document.getElementById('transactionsCount').textContent = filtered.length;
+            
+            // Обновляем теги фильтров
+            updateFilterTags();
+            
+            // Отображаем транзакции
+            displayTransactions(filtered.reverse());
+        }
+
+        function updateFilterTags() {
+            const tags = [];
+            const searchAmount = document.getElementById('searchAmount').value;
+            const dateFrom = document.getElementById('searchDateFrom').value;
+            const dateTo = document.getElementById('searchDateTo').value;
+            
+            if (searchAmount) tags.push({ label: `Сумма: ${searchAmount}`, clear: () => { document.getElementById('searchAmount').value = ''; applyFilters(); } });
+            if (dateFrom) tags.push({ label: `От: ${dateFrom}`, clear: () => { document.getElementById('searchDateFrom').value = ''; applyFilters(); } });
+            if (dateTo) tags.push({ label: `До: ${dateTo}`, clear: () => { document.getElementById('searchDateTo').value = ''; applyFilters(); } });
+            
+            const filterCard = document.getElementById('filterCard').checked;
+            const filterFace = document.getElementById('filterFace').checked;
+            const filterQr = document.getElementById('filterQr').checked;
+            const filterSuccess = document.getElementById('filterSuccess').checked;
+            const filterFailed = document.getElementById('filterFailed').checked;
+            
+            if (!filterCard) tags.push({ label: 'Без карты', clear: () => { document.getElementById('filterCard').checked = true; applyFilters(); } });
+            if (!filterFace) tags.push({ label: 'Без лица', clear: () => { document.getElementById('filterFace').checked = true; applyFilters(); } });
+            if (!filterQr) tags.push({ label: 'Без QR', clear: () => { document.getElementById('filterQr').checked = true; applyFilters(); } });
+            if (!filterSuccess) tags.push({ label: 'Без успешных', clear: () => { document.getElementById('filterSuccess').checked = true; applyFilters(); } });
+            if (!filterFailed) tags.push({ label: 'Без неудачных', clear: () => { document.getElementById('filterFailed').checked = true; applyFilters(); } });
+            
+            const tagsContainer = document.getElementById('filterTags');
+            tagsContainer.innerHTML = '';
+            tags.forEach(tag => {
+                const tagEl = document.createElement('span');
+                tagEl.style.cssText = 'background: #667eea; color: white; padding: 5px 12px; border-radius: 20px; font-size: 12px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;';
+                tagEl.innerHTML = `${tag.label} <span style="font-weight: bold;">×</span>`;
+                tagEl.onclick = tag.clear;
+                tagsContainer.appendChild(tagEl);
+            });
+        }
+
+        function clearFilters() {
+            document.getElementById('searchAmount').value = '';
+            document.getElementById('searchDateFrom').value = '';
+            document.getElementById('searchDateTo').value = '';
+            document.getElementById('filterCard').checked = true;
+            document.getElementById('filterFace').checked = true;
+            document.getElementById('filterQr').checked = true;
+            document.getElementById('filterSuccess').checked = true;
+            document.getElementById('filterFailed').checked = true;
+            applyFilters();
+        }
+
+        function displayTransactions(transactions) {
             const transactionsList = document.getElementById('transactionsList');
             transactionsList.innerHTML = '';
-            data.recent_transactions.reverse().forEach(t => {
+            transactions.forEach(t => {
                 const div = document.createElement('div');
                 div.className = 'transaction ' + t.status;
+                
+                // Подсветка совпадений
+                const searchAmount = document.getElementById('searchAmount').value;
+                let amountText = t.amount + ' ₽';
+                if (searchAmount && t.amount.toString().includes(searchAmount)) {
+                    amountText = amountText.replace(searchAmount, `<mark style="background: #ffc107; padding: 2px 4px; border-radius: 3px;">${searchAmount}</mark>`);
+                }
+                
                 div.innerHTML = `
                     <span>${new Date(t.timestamp).toLocaleString()}</span>
-                    <span>${t.amount} ₽ (${t.type})</span>
+                    <span>${amountText} (${t.type})</span>
                     <span>${t.status === 'success' ? '✅' : '❌'}</span>
                 `;
                 transactionsList.appendChild(div);

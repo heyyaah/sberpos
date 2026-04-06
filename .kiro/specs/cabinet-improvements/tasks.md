@@ -54,7 +54,7 @@
 
 ## Task 3: Добавить панель быстрых действий
 **Priority:** High
-**Status:** pending
+**Status:** completed
 **Requirement:** Requirement 8
 
 ### Description
@@ -80,7 +80,7 @@
 
 ## Task 4: Реализовать поиск по транзакциям
 **Priority:** High
-**Status:** pending
+**Status:** completed
 **Requirement:** Requirement 9
 
 ### Description
@@ -107,7 +107,7 @@
 
 ## Task 5: Добавить расширенные фильтры
 **Priority:** Medium
-**Status:** pending
+**Status:** completed
 **Requirement:** Requirement 10
 
 ### Description
