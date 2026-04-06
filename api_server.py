@@ -2247,9 +2247,47 @@ def get_support_messages():
         return jsonify({'error': 'Unauthorized'}), 401
     
     username = session['username']
+    user = users.get(username)
     
-    # Пробуем загрузить из БД
+    # Проверяем блокировку
+    try:
+        with open('users.json', 'r') as f:
+            bot_users = json.load(f)
+            telegram_id = user.get('telegram_id')
+            if telegram_id and telegram_id in bot_users.get('blocked', []):
+                return jsonify({'error': 'Вы заблокированы в боте', 'blocked': True}), 403
+    except Exception:
+        pass
+    
+    # Загружаем сообщения из заявки
     messages = []
+    try:
+        with open('tickets.json', 'r') as f:
+            tickets = json.load(f)
+            telegram_id = user.get('telegram_id')
+            
+            # Ищем заявку пользователя
+            for tid, ticket in tickets.items():
+                if ticket.get('user_id') == telegram_id or ticket.get('username') == username:
+                    # Добавляем описание как первое сообщение
+                    messages.append({
+                        'message': ticket.get('description', ''),
+                        'is_admin': False,
+                        'timestamp': datetime.fromtimestamp(ticket.get('created_at', 0)).isoformat()
+                    })
+                    
+                    # Добавляем все сообщения из истории
+                    for msg in ticket.get('messages', []):
+                        messages.append({
+                            'message': msg.get('text', ''),
+                            'is_admin': msg.get('from') == 'admin',
+                            'timestamp': datetime.fromtimestamp(msg.get('timestamp', 0)).isoformat()
+                        })
+                    break
+    except Exception as e:
+        print(f"❌ Ошибка загрузки заявок: {e}")
+    
+    # Также загружаем из БД (для совместимости)
     if DATABASE_URL and PSYCOPG_AVAILABLE:
         try:
             conn = get_db_connection()
@@ -2261,11 +2299,20 @@ def get_support_messages():
                 ORDER BY created_at ASC
             ''', (username,))
             rows = cur.fetchall()
-            messages = [{'message': r[0], 'is_admin': r[1], 'timestamp': r[2].isoformat()} for r in rows]
+            db_messages = [{'message': r[0], 'is_admin': r[1], 'timestamp': r[2].isoformat()} for r in rows]
+            
+            # Объединяем сообщения (избегаем дубликатов)
+            for db_msg in db_messages:
+                if not any(m['message'] == db_msg['message'] and m['timestamp'] == db_msg['timestamp'] for m in messages):
+                    messages.append(db_msg)
+            
             cur.close()
             conn.close()
         except Exception as e:
-            print(f"❌ Ошибка загрузки сообщений: {e}")
+            print(f"❌ Ошибка загрузки из БД: {e}")
+    
+    # Сортируем по времени
+    messages.sort(key=lambda x: x['timestamp'])
     
     return jsonify({'messages': messages}), 200
 
@@ -2283,27 +2330,132 @@ def send_support_message():
     if not message:
         return jsonify({'error': 'Empty message'}), 400
     
-    # Сохраняем в БД
-    if DATABASE_URL and PSYCOPG_AVAILABLE:
-        try:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute('''
-                INSERT INTO support_messages (username, message, is_admin, created_at)
-                VALUES (%s, %s, FALSE, CURRENT_TIMESTAMP)
-            ''', (username, message))
-            conn.commit()
-            cur.close()
-            conn.close()
-            
-            print(f"💬 [SUPPORT] {username}: {message}")
-            
-            return jsonify({'success': True}), 200
-        except Exception as e:
-            print(f"❌ Ошибка сохранения сообщения: {e}")
-            return jsonify({'error': str(e)}), 500
+    # Получаем user_id пользователя
+    user = users.get(username)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
     
-    return jsonify({'error': 'Database not available'}), 500
+    # Проверяем заблокирован ли пользователь в боте
+    try:
+        import requests
+        BOT_TOKEN = os.environ.get('SUPPORT_BOT_TOKEN', '8742060687:AAHfsRrh1EKju-ZZ3CLHb2cBl-CkM63fByc')
+        
+        # Проверяем блокировку через файл users.json бота
+        try:
+            with open('users.json', 'r') as f:
+                bot_users = json.load(f)
+                # Ищем telegram_id пользователя по username
+                telegram_id = user.get('telegram_id')
+                if telegram_id and telegram_id in bot_users.get('blocked', []):
+                    return jsonify({'error': 'Вы заблокированы в боте'}), 403
+        except Exception:
+            pass
+        
+        # Загружаем или создаем заявку
+        try:
+            with open('tickets.json', 'r') as f:
+                tickets = json.load(f)
+        except Exception:
+            tickets = {}
+        
+        # Ищем открытую заявку пользователя или создаем новую
+        user_ticket_id = None
+        telegram_id = user.get('telegram_id')
+        
+        if telegram_id:
+            for tid, ticket in tickets.items():
+                if ticket.get('user_id') == telegram_id and ticket.get('status') in ['open', 'in_progress']:
+                    user_ticket_id = tid
+                    break
+        
+        if not user_ticket_id:
+            # Создаем новую заявку
+            ticket_id = max([int(k) for k in tickets.keys()], default=0) + 1
+            user_ticket_id = str(ticket_id)
+            
+            tickets[user_ticket_id] = {
+                'user_id': telegram_id or 0,
+                'username': username,
+                'first_name': username,
+                'description': message,
+                'status': 'open',
+                'created_at': time.time(),
+                'messages': [],
+                'from_web': True
+            }
+            
+            # Уведомляем админов через Telegram
+            try:
+                with open('users.json', 'r') as f:
+                    bot_users = json.load(f)
+                    admins = bot_users.get('admins', [])
+                    
+                    for admin_id in admins:
+                        try:
+                            requests.post(
+                                f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage',
+                                json={
+                                    'chat_id': admin_id,
+                                    'text': f"🆕 Новая заявка #{user_ticket_id} (из веб-кабинета)\n"
+                                           f"От: {username}\n"
+                                           f"Создана: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+                                           f"📝 {message}"
+                                }
+                            )
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+        else:
+            # Добавляем сообщение к существующей заявке
+            tickets[user_ticket_id]['messages'].append({
+                'from': 'user',
+                'user_id': telegram_id or 0,
+                'text': message,
+                'timestamp': time.time(),
+                'from_web': True
+            })
+            
+            # Уведомляем назначенного админа
+            assigned_to = tickets[user_ticket_id].get('assigned_to')
+            if assigned_to:
+                try:
+                    requests.post(
+                        f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage',
+                        json={
+                            'chat_id': assigned_to,
+                            'text': f"💬 {username} ответил на заявку #{user_ticket_id} (из веб-кабинета):\n\n{message}"
+                        }
+                    )
+                except Exception:
+                    pass
+        
+        # Сохраняем заявки
+        with open('tickets.json', 'w') as f:
+            json.dump(tickets, f, ensure_ascii=False, indent=2)
+        
+        # Сохраняем в БД для отображения в веб-интерфейсе
+        if DATABASE_URL and PSYCOPG_AVAILABLE:
+            try:
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute('''
+                    INSERT INTO support_messages (username, message, is_admin, created_at)
+                    VALUES (%s, %s, FALSE, CURRENT_TIMESTAMP)
+                ''', (username, message))
+                conn.commit()
+                cur.close()
+                conn.close()
+            except Exception as e:
+                print(f"❌ Ошибка сохранения в БД: {e}")
+        
+        print(f"💬 [SUPPORT] {username}: {message} (ticket #{user_ticket_id})")
+        
+        return jsonify({'success': True, 'ticket_id': user_ticket_id}), 200
+        
+    except Exception as e:
+        print(f"❌ Ошибка отправки в бот: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/cabinet/faq', methods=['GET'])
 def get_faq():
@@ -3617,11 +3769,27 @@ def cabinet_page():
 
         async function loadSupportMessages() {
             const response = await fetch('/cabinet/support/messages');
+            
+            if (response.status === 403) {
+                const data = await response.json();
+                if (data.blocked) {
+                    const messagesDiv = document.getElementById('supportMessages');
+                    messagesDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #dc3545; font-weight: bold;">🚫 Вы заблокированы в боте</div>';
+                    document.getElementById('supportMessageInput').disabled = true;
+                    return;
+                }
+            }
+            
             if (!response.ok) return;
             
             const data = await response.json();
             const messagesDiv = document.getElementById('supportMessages');
             messagesDiv.innerHTML = '';
+            
+            if (data.messages.length === 0) {
+                messagesDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Напишите первое сообщение</div>';
+                return;
+            }
             
             data.messages.forEach(msg => {
                 const div = document.createElement('div');
@@ -3638,7 +3806,7 @@ def cabinet_page():
             const input = document.getElementById('supportMessageInput');
             const message = input.value.trim();
             
-            if (!message) return;
+            if (!message || input.disabled) return;
             
             const response = await fetch('/cabinet/support/send', {
                 method: 'POST',
@@ -3646,11 +3814,19 @@ def cabinet_page():
                 body: JSON.stringify({ message })
             });
             
+            if (response.status === 403) {
+                const data = await response.json();
+                alert(data.error || 'Вы заблокированы в боте');
+                input.disabled = true;
+                return;
+            }
+            
             if (response.ok) {
                 input.value = '';
                 loadSupportMessages();
             } else {
-                alert('Ошибка отправки сообщения');
+                const data = await response.json();
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
             }
         }
 
