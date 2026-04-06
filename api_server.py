@@ -3340,6 +3340,11 @@ def cabinet_page():
 
             if (response.ok) {
                 currentUser = username;
+                
+                // Сохраняем сессию в localStorage
+                localStorage.setItem('sberpos_username', username);
+                localStorage.setItem('sberpos_password', password);
+                
                 document.getElementById('username').textContent = 'Пользователь: ' + username;
                 document.getElementById('balance').classList.remove('hidden');
                 document.getElementById('terminalsBtn').classList.remove('hidden');
@@ -3724,8 +3729,14 @@ def cabinet_page():
             if (confirm('Вы точно хотите выйти?')) {
                 currentUser = null;
                 selectedTerminal = null;
+                
+                // Удаляем сессию из localStorage
+                localStorage.removeItem('sberpos_username');
+                localStorage.removeItem('sberpos_password');
+                
                 document.getElementById('username').textContent = '';
                 document.getElementById('balance').classList.add('hidden');
+                document.getElementById('terminalsBtn').classList.add('hidden');
                 document.getElementById('analyticsBtn').classList.add('hidden');
                 document.getElementById('faqBtn').classList.add('hidden');
                 document.getElementById('newsBtn').classList.add('hidden');
@@ -4197,6 +4208,44 @@ def cabinet_page():
             document.documentElement.setAttribute('data-theme', savedTheme);
             if (themeBtn) {
                 themeBtn.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+            }
+        })();
+
+        // Автоматический вход при загрузке страницы
+        (async function() {
+            const savedUsername = localStorage.getItem('sberpos_username');
+            const savedPassword = localStorage.getItem('sberpos_password');
+            
+            if (savedUsername && savedPassword) {
+                // Пробуем войти с сохраненными данными
+                const response = await fetch('/cabinet/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: savedUsername, password: savedPassword })
+                });
+                
+                if (response.ok) {
+                    // Успешный вход - обновляем интерфейс
+                    currentUser = savedUsername;
+                    document.getElementById('username').textContent = 'Пользователь: ' + savedUsername;
+                    document.getElementById('balance').classList.remove('hidden');
+                    document.getElementById('terminalsBtn').classList.remove('hidden');
+                    document.getElementById('analyticsBtn').classList.remove('hidden');
+                    document.getElementById('faqBtn').classList.remove('hidden');
+                    document.getElementById('newsBtn').classList.remove('hidden');
+                    document.getElementById('supportChatBtn').classList.remove('hidden');
+                    document.getElementById('notificationsBtn').classList.remove('hidden');
+                    document.getElementById('logoutBtn').classList.remove('hidden');
+                    document.getElementById('authSection').classList.add('hidden');
+                    document.getElementById('bindSection').classList.remove('hidden');
+                    document.getElementById('terminalsSection').classList.remove('hidden');
+                    loadTerminals();
+                    loadBalance();
+                } else {
+                    // Неудачный вход - удаляем сохраненные данные
+                    localStorage.removeItem('sberpos_username');
+                    localStorage.removeItem('sberpos_password');
+                }
             }
         })();
     </script>
