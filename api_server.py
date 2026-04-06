@@ -3147,7 +3147,7 @@ def cabinet_page():
     </div>
     
     <!-- Кнопка поддержки (ссылка на Telegram бота) -->
-    <a href="https://t.me/sberpos_support_bot" target="_blank" class="support-chat-btn hidden" id="supportChatBtn" title="Написать в поддержку">
+    <a href="https://t.me/sber_support_pos_bot" target="_blank" class="support-chat-btn hidden" id="supportChatBtn" title="Написать в поддержку">
         💬
     </a>
     
