@@ -846,27 +846,12 @@ def payload_handler():
             # Генерируем одноразовый пароль для QR-оплаты
             qr_password = ''.join([str(random.randint(0, 9)) for _ in range(6)])
             
-            # Проверяем включен ли обход проверки карты/лица
-            bypass_card_check = terminals[terminal_id].get('bypass_card_check', False)
-            
-            if bypass_card_check:
-                # Автоматически подтверждаем оплату
-                terminals[terminal_id]['card_status'] = {
-                    'pending': False,
-                    'approved': True
-                }
-                terminals[terminal_id]['payment_processed'] = True
-                add_transaction(terminal_id, amount, 'card', 'success')
-                print(f"💳 [BYPASS] {terminal_id}: Auto-approved payment (bypass enabled)")
-                # Автоматически сбросить в idle через 5 секунд
-                auto_reset_to_idle(terminal_id, delay=5)
-            else:
-                # Обычная логика - требуется подтверждение
-                terminals[terminal_id]['card_status'] = {
-                    'pending': True,
-                    'approved': False
-                }
-                terminals[terminal_id]['payment_processed'] = False  # Сбрасываем флаг при новой оплате
+            # Обычная логика - требуется подтверждение
+            terminals[terminal_id]['card_status'] = {
+                'pending': True,
+                'approved': False
+            }
+            terminals[terminal_id]['payment_processed'] = False  # Сбрасываем флаг при новой оплате
             
             terminals[terminal_id]['qr_password'] = qr_password  # Сохраняем пароль
             print(f"🔐 [PAYLOAD] Generated QR password for {terminal_id}: {qr_password}")
@@ -943,27 +928,12 @@ def set_device_payload_full(session):
         # Генерируем одноразовый пароль для QR-оплаты
         qr_password = ''.join([str(random.randint(0, 9)) for _ in range(6)])
         
-        # Проверяем включен ли обход проверки карты/лица
-        bypass_card_check = terminals[terminal_id].get('bypass_card_check', False)
-        
-        if bypass_card_check:
-            # Автоматически подтверждаем оплату
-            terminals[terminal_id]['card_status'] = {
-                'pending': False,
-                'approved': True
-            }
-            terminals[terminal_id]['payment_processed'] = True
-            add_transaction(terminal_id, amount, 'card', 'success')
-            print(f"💳 [BYPASS] {terminal_id}: Auto-approved payment (bypass enabled)")
-            # Автоматически сбросить в idle через 5 секунд
-            auto_reset_to_idle(terminal_id, delay=5)
-        else:
-            # Обычная логика - требуется подтверждение
-            terminals[terminal_id]['card_status'] = {
-                'pending': True,
-                'approved': False
-            }
-            terminals[terminal_id]['payment_processed'] = False
+        # Обычная логика - требуется подтверждение
+        terminals[terminal_id]['card_status'] = {
+            'pending': True,
+            'approved': False
+        }
+        terminals[terminal_id]['payment_processed'] = False
         
         terminals[terminal_id]['qr_password'] = qr_password
         print(f"🔐 [PAYLOAD_FULL] Generated QR password for {terminal_id}: {qr_password}")
@@ -1623,6 +1593,30 @@ def qr_initiate():
     }
     
     print(f"📱 [QR INITIATE] {terminal_id}: Switched to payPending, waiting for confirmation")
+    
+    # Проверяем включен ли обход проверки карты/лица
+    bypass_card_check = terminal.get('bypass_card_check', False)
+    if bypass_card_check:
+        # Запускаем таймер автоподтверждения через 3 секунды
+        def auto_confirm():
+            time.sleep(3)
+            if terminal_id in terminals:
+                term = terminals[terminal_id]
+                current = term.get('current_payload', {}).get('state', 'idle')
+                # Проверяем что терминал все еще в payPending и оплата не обработана
+                if current == 'payPending' and not term.get('payment_processed', False):
+                    term['card_status'] = {
+                        'pending': False,
+                        'approved': True
+                    }
+                    term['payment_processed'] = True
+                    add_transaction(terminal_id, current_amount, 'card', 'success')
+                    print(f"💳 [BYPASS] {terminal_id}: Auto-approved payment after 3s (bypass enabled)")
+                    # Автоматически сбросить в idle через 5 секунд
+                    auto_reset_to_idle(terminal_id, delay=5)
+        
+        threading.Thread(target=auto_confirm, daemon=True).start()
+        print(f"⏱️  [BYPASS] {terminal_id}: Auto-confirm timer started (3s)")
     
     return jsonify({'success': True}), 200
 
