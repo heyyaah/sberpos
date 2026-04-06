@@ -141,10 +141,33 @@ def init_db():
             )
         ''')
         
+        # Таблица базы знаний
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS knowledge_base (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(200) NOT NULL,
+                content TEXT NOT NULL,
+                category VARCHAR(50) NOT NULL,
+                views INT DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Таблица новостей
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS news (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(200) NOT NULL,
+                content TEXT NOT NULL,
+                type VARCHAR(50) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         conn.commit()
         cur.close()
         conn.close()
-        print("✅ База данных инициализирована (7 таблиц)")
+        print("✅ База данных инициализирована (9 таблиц)")
     except Exception as e:
         print(f"❌ Ошибка инициализации БД: {e}")
 
@@ -2282,6 +2305,70 @@ def send_support_message():
     
     return jsonify({'error': 'Database not available'}), 500
 
+@app.route('/cabinet/faq', methods=['GET'])
+def get_faq():
+    """Получить FAQ"""
+    # Простой статический FAQ
+    faq = [
+        {
+            'question': 'Как привязать терминал?',
+            'answer': 'Введите ID терминала (TRM-####) и пароль в разделе "Привязать терминал".'
+        },
+        {
+            'question': 'Как открыть смену?',
+            'answer': 'Выберите терминал и нажмите "Открыть смену" в разделе управления сменой.'
+        },
+        {
+            'question': 'Как экспортировать транзакции?',
+            'answer': 'Перейдите в раздел "Аналитика" и нажмите кнопку "Скачать Excel" или "Скачать CSV".'
+        },
+        {
+            'question': 'Что делать если терминал не отвечает?',
+            'answer': 'Проверьте интернет-соединение терминала. Если проблема сохраняется, обратитесь в поддержку через чат.'
+        },
+        {
+            'question': 'Как посмотреть статистику?',
+            'answer': 'Нажмите "Подробнее" на карточке терминала или перейдите в раздел "Аналитика" для общей статистики.'
+        }
+    ]
+    return jsonify({'faq': faq}), 200
+
+@app.route('/cabinet/news', methods=['GET'])
+def get_news():
+    """Получить новости"""
+    # Простые статические новости
+    news = [
+        {
+            'id': 1,
+            'title': 'Добавлена темная тема',
+            'content': 'Теперь вы можете переключаться между светлой и темной темой интерфейса.',
+            'type': 'feature',
+            'date': '2026-04-06'
+        },
+        {
+            'id': 2,
+            'title': 'Новая аналитика',
+            'content': 'Доступны графики транзакций, рейтинг терминалов и анализ конверсии.',
+            'type': 'feature',
+            'date': '2026-04-06'
+        },
+        {
+            'id': 3,
+            'title': 'Экспорт в Excel и CSV',
+            'content': 'Теперь можно экспортировать транзакции в удобном формате для анализа.',
+            'type': 'feature',
+            'date': '2026-04-06'
+        },
+        {
+            'id': 4,
+            'title': 'Чат с поддержкой',
+            'content': 'Добавлен виджет чата для быстрой связи с технической поддержкой.',
+            'type': 'feature',
+            'date': '2026-04-06'
+        }
+    ]
+    return jsonify({'news': news}), 200
+
 @app.route('/static/logo.jpg')
 def serve_logo():
     """Отдать логотип"""
@@ -2696,6 +2783,8 @@ def cabinet_page():
                 💰 <span id="balanceAmount">0</span> ₽
             </div>
             <button id="analyticsBtn" class="hidden btn btn-primary" onclick="showAnalytics()" style="padding: 10px 20px;">📊 Аналитика</button>
+            <button id="faqBtn" class="hidden btn" onclick="showFAQ()" style="padding: 10px 20px; background: #17a2b8; color: white;">❓ FAQ</button>
+            <button id="newsBtn" class="hidden btn" onclick="showNews()" style="padding: 10px 20px; background: #ffc107; color: black;">📰 Новости</button>
             <button id="logoutBtn" class="hidden logout-btn" onclick="logout()">Выйти</button>
         </div>
     </div>
@@ -2747,6 +2836,18 @@ def cabinet_page():
                 <button class="btn btn-success" onclick="exportData('xlsx')">📊 Скачать Excel</button>
                 <button class="btn btn-primary" onclick="exportData('csv')">📄 Скачать CSV</button>
             </div>
+        </div>
+
+        <!-- FAQ -->
+        <div id="faqSection" class="card hidden">
+            <h2>❓ Часто задаваемые вопросы</h2>
+            <div id="faqList"></div>
+        </div>
+
+        <!-- Новости -->
+        <div id="newsSection" class="card hidden">
+            <h2>📰 Новости и обновления</h2>
+            <div id="newsList"></div>
         </div>
 
         <!-- Список терминалов -->
@@ -2862,6 +2963,8 @@ def cabinet_page():
                 document.getElementById('username').textContent = 'Пользователь: ' + username;
                 document.getElementById('balance').classList.remove('hidden');
                 document.getElementById('analyticsBtn').classList.remove('hidden');
+                document.getElementById('faqBtn').classList.remove('hidden');
+                document.getElementById('newsBtn').classList.remove('hidden');
                 document.getElementById('supportChatBtn').classList.remove('hidden');
                 document.getElementById('logoutBtn').classList.remove('hidden');
                 document.getElementById('authSection').classList.add('hidden');
@@ -3242,12 +3345,17 @@ def cabinet_page():
                 document.getElementById('username').textContent = '';
                 document.getElementById('balance').classList.add('hidden');
                 document.getElementById('analyticsBtn').classList.add('hidden');
+                document.getElementById('faqBtn').classList.add('hidden');
+                document.getElementById('newsBtn').classList.add('hidden');
+                document.getElementById('supportChatBtn').classList.add('hidden');
                 document.getElementById('logoutBtn').classList.add('hidden');
                 document.getElementById('authSection').classList.remove('hidden');
                 document.getElementById('bindSection').classList.add('hidden');
                 document.getElementById('terminalsSection').classList.add('hidden');
                 document.getElementById('statsSection').classList.add('hidden');
                 document.getElementById('analyticsSection').classList.add('hidden');
+                document.getElementById('faqSection').classList.add('hidden');
+                document.getElementById('newsSection').classList.add('hidden');
                 document.getElementById('authUsername').value = '';
                 document.getElementById('authPassword').value = '';
             }
@@ -3454,6 +3562,64 @@ def cabinet_page():
                 loadSupportMessages();
             }
         }, 5000);
+
+        // FAQ
+        async function showFAQ() {
+            document.getElementById('faqSection').classList.remove('hidden');
+            document.getElementById('terminalsSection').classList.add('hidden');
+            document.getElementById('statsSection').classList.add('hidden');
+            document.getElementById('analyticsSection').classList.add('hidden');
+            document.getElementById('newsSection').classList.add('hidden');
+            
+            const response = await fetch('/cabinet/faq');
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            const faqList = document.getElementById('faqList');
+            faqList.innerHTML = '';
+            
+            data.faq.forEach(item => {
+                const div = document.createElement('div');
+                div.style.cssText = 'padding: 20px; background: var(--stat-box-bg); border-radius: 12px; margin-bottom: 15px; border-left: 4px solid #667eea;';
+                div.innerHTML = `
+                    <h3 style="color: var(--text-primary); margin-bottom: 10px; font-size: 18px;">❓ ${item.question}</h3>
+                    <p style="color: var(--text-secondary); line-height: 1.6;">${item.answer}</p>
+                `;
+                faqList.appendChild(div);
+            });
+        }
+
+        // Новости
+        async function showNews() {
+            document.getElementById('newsSection').classList.remove('hidden');
+            document.getElementById('terminalsSection').classList.add('hidden');
+            document.getElementById('statsSection').classList.add('hidden');
+            document.getElementById('analyticsSection').classList.add('hidden');
+            document.getElementById('faqSection').classList.add('hidden');
+            
+            const response = await fetch('/cabinet/news');
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            const newsList = document.getElementById('newsList');
+            newsList.innerHTML = '';
+            
+            const typeIcons = { feature: '✨', maintenance: '🔧', tip: '💡' };
+            const typeColors = { feature: '#28a745', maintenance: '#ffc107', tip: '#17a2b8' };
+            
+            data.news.forEach(item => {
+                const div = document.createElement('div');
+                div.style.cssText = 'padding: 20px; background: var(--stat-box-bg); border-radius: 12px; margin-bottom: 15px; border-left: 4px solid ' + typeColors[item.type] + ';';
+                div.innerHTML = `
+                    <div style="display: flex; justify-content: between; align-items: start; margin-bottom: 10px;">
+                        <h3 style="color: var(--text-primary); font-size: 18px; flex: 1;">${typeIcons[item.type]} ${item.title}</h3>
+                        <span style="color: var(--text-secondary); font-size: 14px;">${item.date}</span>
+                    </div>
+                    <p style="color: var(--text-secondary); line-height: 1.6;">${item.content}</p>
+                `;
+                newsList.appendChild(div);
+            });
+        }
 
         // Функции кассы
         async function sendPayment(amount) {

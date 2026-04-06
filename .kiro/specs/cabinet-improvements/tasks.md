@@ -301,7 +301,7 @@
 
 ## Task 12: Создать базу знаний и FAQ
 **Priority:** Medium
-**Status:** pending
+**Status:** completed
 **Requirement:** Requirement 13
 
 ### Description
@@ -331,7 +331,7 @@
 
 ## Task 13: Добавить ленту новостей
 **Priority:** Low
-**Status:** pending
+**Status:** completed
 **Requirement:** Requirement 14
 
 ### Description
