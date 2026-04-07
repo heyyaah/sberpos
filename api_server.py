@@ -1,4 +1,4 @@
-"""
+﻿"""
 API Server для управления терминалами SberPOS
 Эмулирует серверную часть для тестирования
 """
@@ -44,13 +44,11 @@ auto_reset_timers = {}  # terminal_id -> timer
 last_seen = {}  # terminal_id -> datetime последнего запроса
 users = {}  # user_id -> {username, password, terminals: [], balance: 0}
 transactions = {}  # terminal_id -> [{timestamp, amount, type, status}]
-shifts = {}  # terminal_id -> {opened_at, closed_at, transactions_count, total_amount}
 balance_history = {}  # user_id -> [{timestamp, amount, type, terminal_id, description}]
 
 TERMINALS_FILE = os.environ.get('TERMINALS_FILE', '/data/terminals_db.json') if os.path.exists('/data') else 'terminals_db.json'
 USERS_FILE = 'users_db.json'
 TRANSACTIONS_FILE = 'transactions_db.json'
-SHIFTS_FILE = 'shifts_db.json'
 BALANCE_HISTORY_FILE = 'balance_history_db.json'
 TERMINAL_TIMEOUT = 10  # секунд без активности для отмены оплаты
 DATABASE_URL = os.environ.get('DATABASE_URL')  # PostgreSQL URL от Render
@@ -98,15 +96,6 @@ def init_db():
                 terminal_id VARCHAR(10) NOT NULL,
                 data JSONB NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Таблица смен
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS shifts (
-                terminal_id VARCHAR(10) PRIMARY KEY,
-                data JSONB NOT NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -352,28 +341,6 @@ def save_transactions():
     except Exception as e:
         print(f"❌ Ошибка сохранения транзакций: {e}")
 
-def load_shifts():
-    """Загрузка смен"""
-    global shifts
-    try:
-        with open(SHIFTS_FILE, 'r', encoding='utf-8') as f:
-            shifts = json.load(f)
-            print(f"📅 Загружено смен для {len(shifts)} терминалов")
-    except FileNotFoundError:
-        shifts = {}
-        print("📅 Файл смен не найден, создан новый")
-    except Exception as e:
-        print(f"❌ Ошибка загрузки смен: {e}")
-        shifts = {}
-
-def save_shifts():
-    """Сохранение смен"""
-    try:
-        with open(SHIFTS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(shifts, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"❌ Ошибка сохранения смен: {e}")
-
 def load_balance_history():
     """Загрузка истории баланса"""
     global balance_history
@@ -444,13 +411,6 @@ def add_transaction(terminal_id, amount, payment_type, status):
     transactions[terminal_id].append(transaction)
     save_transactions()
     
-    # Обновляем статистику смены если смена открыта
-    if terminal_id in shifts and shifts[terminal_id].get('opened_at') and not shifts[terminal_id].get('closed_at'):
-        shifts[terminal_id]['transactions_count'] = shifts[terminal_id].get('transactions_count', 0) + 1
-        if status == 'success':
-            shifts[terminal_id]['total_amount'] = shifts[terminal_id].get('total_amount', 0) + float(amount)
-        save_shifts()
-    
     # Начисляем деньги владельцу терминала если оплата успешна
     if status == 'success' and terminal_id in terminals:
         owner_id = terminals[terminal_id].get('owner_id')
@@ -504,7 +464,6 @@ init_db()
 load_terminals()
 load_users()
 load_transactions()
-load_shifts()
 load_balance_history()
 
 # Запуск фонового потока для проверки таймаутов
@@ -903,17 +862,6 @@ def payload_handler():
         content = data.get('content', '')
         buttons = data.get('buttons', '')
         
-        # Проверяем открыта ли смена если пытаемся отправить оплату
-        if state == 'pay':
-            owner_id = terminals[terminal_id].get('owner_id')
-            bypass_shift_check = terminals[terminal_id].get('bypass_shift_check', False)
-            
-            if owner_id and not bypass_shift_check:
-                # Проверяем есть ли открытая смена
-                shift = shifts.get(terminal_id, {})
-                if not (shift.get('opened_at') and not shift.get('closed_at')):
-                    print(f"❌ [PAYLOAD] {terminal_id}: Cannot send payment - shift is closed")
-                    return jsonify({'error': 'Смена закрыта', 'status': 'error'}), 400
         
         terminals[terminal_id]['current_payload'] = {
             'state': state,
@@ -989,13 +937,6 @@ def set_device_payload_full(session):
     if state == 'pay':
         owner_id = terminals[terminal_id].get('owner_id')
         bypass_shift_check = terminals[terminal_id].get('bypass_shift_check', False)
-        
-        if owner_id and not bypass_shift_check:
-            # Проверяем есть ли открытая смена
-            shift = shifts.get(terminal_id, {})
-            if not (shift.get('opened_at') and not shift.get('closed_at')):
-                print(f"❌ [PAYLOAD_FULL] {terminal_id}: Cannot send payment - shift is closed")
-                return jsonify({'error': 'Смена закрыта', 'status': 'error'}), 400
     
     terminals[terminal_id]['current_payload'] = {
         'state': state,
@@ -1763,860 +1704,6 @@ def qr_generate():
     
     return send_file(img_io, mimetype='image/png')
 
-# ===== ЛИЧНЫЙ КАБИНЕТ =====
-
-@app.route('/cabinet/register', methods=['POST'])
-def cabinet_register():
-    """Регистрация пользователя"""
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-    
-    if not username or not password:
-        return jsonify({'error': 'Missing username or password'}), 400
-    
-    if username in users:
-        return jsonify({'error': 'User already exists'}), 409
-    
-    user_id = str(uuid.uuid4())
-    users[username] = {
-        'user_id': user_id,
-        'password': password,
-        'terminals': [],
-        'balance': 0,  # Начальный баланс
-        'created_at': datetime.now().isoformat()
-    }
-    
-    save_users()
-    print(f"👤 [REGISTER] New user: {username}")
-    
-    return jsonify({'success': True, 'user_id': user_id}), 201
-
-@app.route('/cabinet/login', methods=['POST'])
-def cabinet_login():
-    """Вход в личный кабинет"""
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-    
-    if not username or not password:
-        return jsonify({'error': 'Missing credentials'}), 400
-    
-    user = users.get(username)
-    if not user or user['password'] != password:
-        return jsonify({'error': 'Invalid credentials'}), 401
-    
-    # Создаём сессию
-    session_id = str(uuid.uuid4())
-    sessions[session_id] = {
-        'user_id': user['user_id'],
-        'username': username,
-        'authenticated': True,
-        'type': 'user'  # отличаем от терминальной сессии
-    }
-    
-    print(f"👤 [LOGIN] User logged in: {username}")
-    
-    response = make_response(jsonify({'success': True}))
-    response.set_cookie('session_id', session_id)
-    
-    return response
-
-@app.route('/cabinet/bind_terminal', methods=['POST'])
-def cabinet_bind_terminal():
-    """Привязать терминал к пользователю"""
-    session = get_session(request)
-    if not session or session.get('type') != 'user':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    data = request.json
-    terminal_id = data.get('terminal_id')
-    terminal_password = data.get('password')
-    
-    if not terminal_id or not terminal_password:
-        return jsonify({'error': 'Missing terminal_id or password'}), 400
-    
-    if terminal_id not in terminals:
-        return jsonify({'error': 'Terminal not found'}), 404
-    
-    if terminals[terminal_id]['password'] != terminal_password:
-        return jsonify({'error': 'Invalid terminal password'}), 403
-    
-    # Проверяем что терминал еще не привязан
-    if 'owner_id' in terminals[terminal_id]:
-        return jsonify({'error': 'Terminal already bound to another user'}), 409
-    
-    # Привязываем терминал
-    username = session['username']
-    terminals[terminal_id]['owner_id'] = users[username]['user_id']
-    users[username]['terminals'].append(terminal_id)
-    
-    save_terminals()
-    save_users()
-    
-    print(f"🔗 [BIND] Terminal {terminal_id} bound to user {username}")
-    
-    return jsonify({'success': True}), 200
-
-@app.route('/cabinet/unbind_terminal', methods=['POST'])
-def cabinet_unbind_terminal():
-    """Отвязать терминал от пользователя"""
-    session = get_session(request)
-    if not session or session.get('type') != 'user':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    data = request.json
-    terminal_id = data.get('terminal_id')
-    
-    if not terminal_id:
-        return jsonify({'error': 'Missing terminal_id'}), 400
-    
-    username = session['username']
-    user_id = users[username]['user_id']
-    
-    # Проверяем что терминал принадлежит этому пользователю
-    if terminal_id not in users[username]['terminals']:
-        return jsonify({'error': 'Terminal not owned by user'}), 403
-    
-    # Отвязываем терминал
-    if terminal_id in terminals:
-        terminals[terminal_id].pop('owner_id', None)
-        save_terminals()
-    
-    users[username]['terminals'].remove(terminal_id)
-    save_users()
-    
-    print(f"🔓 [UNBIND] Terminal {terminal_id} unbound from user {username}")
-    
-    return jsonify({'success': True}), 200
-
-@app.route('/admin/force_unbind_terminal', methods=['POST'])
-@require_auth
-def admin_force_unbind_terminal(session):
-    """Принудительно отвязать терминал (для админов)"""
-    data = request.json
-    terminal_id = data.get('terminal_id')
-    
-    if not terminal_id:
-        return jsonify({'error': 'Missing terminal_id'}), 400
-    
-    if terminal_id not in terminals:
-        return jsonify({'error': 'Terminal not found'}), 404
-    
-    # Находим владельца
-    owner_id = terminals[terminal_id].get('owner_id')
-    if owner_id:
-        # Удаляем из списка терминалов пользователя
-        for username, user_data in users.items():
-            if user_data.get('user_id') == owner_id and terminal_id in user_data.get('terminals', []):
-                user_data['terminals'].remove(terminal_id)
-                save_users()
-                break
-    
-    # Отвязываем терминал
-    terminals[terminal_id].pop('owner_id', None)
-    save_terminals()
-    
-    print(f"🔓 [FORCE UNBIND] Terminal {terminal_id} force unbound")
-    
-    return jsonify({'success': True, 'message': f'Terminal {terminal_id} unbound'}), 200
-
-@app.route('/cabinet/terminals', methods=['GET'])
-def cabinet_terminals():
-    """Получить список терминалов пользователя"""
-    session = get_session(request)
-    if not session or session.get('type') != 'user':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    username = session['username']
-    user_terminals = users[username]['terminals']
-    favorites = users[username].get('favorites', [])
-    
-    terminals_data = []
-    for terminal_id in user_terminals:
-        if terminal_id in terminals:
-            terminal = terminals[terminal_id]
-            shift_status = shifts.get(terminal_id, {})
-            
-            terminals_data.append({
-                'terminal_id': terminal_id,
-                'current_state': terminal.get('current_payload', {}).get('state', 'idle'),
-                'shift_opened': bool(shift_status.get('opened_at') and not shift_status.get('closed_at')),
-                'shift_transactions': shift_status.get('transactions_count', 0),
-                'shift_total': shift_status.get('total_amount', 0),
-                'is_favorite': terminal_id in favorites
-            })
-    
-    return jsonify({'terminals': terminals_data, 'favorites': favorites}), 200
-
-@app.route('/cabinet/stats/<terminal_id>', methods=['GET'])
-def cabinet_stats(terminal_id):
-    """Получить статистику терминала"""
-    session = get_session(request)
-    if not session or session.get('type') != 'user':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    username = session['username']
-    
-    # Проверяем что терминал принадлежит пользователю
-    if terminal_id not in users[username]['terminals']:
-        return jsonify({'error': 'Access denied'}), 403
-    
-    if terminal_id not in terminals:
-        return jsonify({'error': 'Terminal not found'}), 404
-    
-    # Получаем транзакции
-    terminal_transactions = transactions.get(terminal_id, [])
-    
-    # Статистика
-    total_transactions = len(terminal_transactions)
-    successful_transactions = len([t for t in terminal_transactions if t['status'] == 'success'])
-    total_amount = sum(float(t['amount']) for t in terminal_transactions if t['status'] == 'success')
-    
-    # Группировка по типам оплаты
-    by_type = {}
-    for t in terminal_transactions:
-        payment_type = t['type']
-        if payment_type not in by_type:
-            by_type[payment_type] = {'count': 0, 'amount': 0}
-        by_type[payment_type]['count'] += 1
-        if t['status'] == 'success':
-            by_type[payment_type]['amount'] += float(t['amount'])
-    
-    # Статус смены
-    shift = shifts.get(terminal_id, {})
-    
-    return jsonify({
-        'terminal_id': terminal_id,
-        'total_transactions': total_transactions,
-        'successful_transactions': successful_transactions,
-        'failed_transactions': total_transactions - successful_transactions,
-        'total_amount': total_amount,
-        'by_type': by_type,
-        'shift': {
-            'opened': bool(shift.get('opened_at') and not shift.get('closed_at')),
-            'opened_at': shift.get('opened_at'),
-            'closed_at': shift.get('closed_at'),
-            'transactions_count': shift.get('transactions_count', 0),
-            'total_amount': shift.get('total_amount', 0)
-        },
-        'recent_transactions': terminal_transactions[-10:]  # последние 10
-    }), 200
-
-@app.route('/cabinet/shift/open', methods=['POST'])
-def cabinet_shift_open():
-    """Открыть смену"""
-    session = get_session(request)
-    if not session or session.get('type') != 'user':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    data = request.json
-    terminal_id = data.get('terminal_id')
-    
-    username = session['username']
-    if terminal_id not in users[username]['terminals']:
-        return jsonify({'error': 'Access denied'}), 403
-    
-    # Проверяем что смена не открыта
-    if terminal_id in shifts and shifts[terminal_id].get('opened_at') and not shifts[terminal_id].get('closed_at'):
-        return jsonify({'error': 'Shift already opened'}), 400
-    
-    shifts[terminal_id] = {
-        'opened_at': datetime.now().isoformat(),
-        'closed_at': None,
-        'transactions_count': 0,
-        'total_amount': 0
-    }
-    
-    save_shifts()
-    print(f"📅 [SHIFT] Opened for {terminal_id}")
-    
-    return jsonify({'success': True}), 200
-
-@app.route('/cabinet/shift/close', methods=['POST'])
-def cabinet_shift_close():
-    """Закрыть смену"""
-    session = get_session(request)
-    if not session or session.get('type') != 'user':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    data = request.json
-    terminal_id = data.get('terminal_id')
-    
-    username = session['username']
-    if terminal_id not in users[username]['terminals']:
-        return jsonify({'error': 'Access denied'}), 403
-    
-    # Проверяем что смена открыта
-    if terminal_id not in shifts or not shifts[terminal_id].get('opened_at') or shifts[terminal_id].get('closed_at'):
-        return jsonify({'error': 'No open shift'}), 400
-    
-    shifts[terminal_id]['closed_at'] = datetime.now().isoformat()
-    save_shifts()
-    
-    print(f"📅 [SHIFT] Closed for {terminal_id}")
-    
-    return jsonify({
-        'success': True,
-        'shift': shifts[terminal_id]
-    }), 200
-
-@app.route('/cabinet/shift/status', methods=['GET'])
-def cabinet_shift_status():
-    """Получить статус смены"""
-    session = get_session(request)
-    if not session or session.get('type') != 'user':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    terminal_id = request.args.get('terminal_id')
-    
-    username = session['username']
-    if terminal_id not in users[username]['terminals']:
-        return jsonify({'error': 'Access denied'}), 403
-    
-    shift = shifts.get(terminal_id, {})
-    
-    return jsonify({
-        'opened': bool(shift.get('opened_at') and not shift.get('closed_at')),
-        'shift': shift
-    }), 200
-
-@app.route('/cabinet/balance', methods=['GET'])
-def cabinet_balance():
-    """Получить баланс пользователя"""
-    session = get_session(request)
-    if not session or session.get('type') != 'user':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    username = session['username']
-    user = users[username]
-    user_id = user['user_id']
-    
-    # История баланса
-    history = balance_history.get(user_id, [])
-    
-    return jsonify({
-        'balance': user.get('balance', 0),
-        'history': history[-20:]  # последние 20 операций
-    }), 200
-
-@app.route('/cabinet/terminal/<terminal_id>/favorite', methods=['POST'])
-def toggle_favorite(terminal_id):
-    """Добавить/удалить терминал из избранного"""
-    session = get_session(request)
-    if not session or session.get('type') != 'user':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    username = session['username']
-    
-    # Проверяем что терминал принадлежит пользователю
-    if terminal_id not in users[username]['terminals']:
-        return jsonify({'error': 'Access denied'}), 403
-    
-    # Получаем текущий список избранных
-    favorites = users[username].get('favorites', [])
-    
-    # Переключаем статус
-    if terminal_id in favorites:
-        favorites.remove(terminal_id)
-        is_favorite = False
-    else:
-        favorites.append(terminal_id)
-        is_favorite = True
-    
-    users[username]['favorites'] = favorites
-    save_users()
-    
-    print(f"⭐ [FAVORITE] {username}: {terminal_id} {'added to' if is_favorite else 'removed from'} favorites")
-    
-    return jsonify({'success': True, 'is_favorite': is_favorite}), 200
-
-@app.route('/cabinet/analytics', methods=['GET'])
-def cabinet_analytics():
-    """Получить аналитику по всем терминалам пользователя"""
-    session = get_session(request)
-    if not session or session.get('type') != 'user':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    username = session['username']
-    user_terminals = users[username]['terminals']
-    
-    period = request.args.get('period', 'day')  # day, week, month
-    date_from = request.args.get('date_from')
-    date_to = request.args.get('date_to')
-    
-    # Собираем все транзакции пользователя
-    all_transactions = []
-    for terminal_id in user_terminals:
-        if terminal_id in transactions:
-            for t in transactions[terminal_id]:
-                t_copy = t.copy()
-                t_copy['terminal_id'] = terminal_id
-                all_transactions.append(t_copy)
-    
-    # Фильтруем по датам если указаны
-    if date_from:
-        all_transactions = [t for t in all_transactions if t['timestamp'] >= date_from]
-    if date_to:
-        all_transactions = [t for t in all_transactions if t['timestamp'] <= date_to + 'T23:59:59']
-    
-    # Группируем по периодам
-    from collections import defaultdict
-    grouped = defaultdict(lambda: {'success': 0, 'failed': 0, 'amount': 0})
-    
-    for t in all_transactions:
-        dt = datetime.fromisoformat(t['timestamp'])
-        
-        if period == 'day':
-            key = dt.strftime('%Y-%m-%d')
-        elif period == 'week':
-            key = dt.strftime('%Y-W%W')
-        else:  # month
-            key = dt.strftime('%Y-%m')
-        
-        if t['status'] == 'success':
-            grouped[key]['success'] += 1
-            grouped[key]['amount'] += float(t['amount'])
-        else:
-            grouped[key]['failed'] += 1
-    
-    # Топ терминалов по выручке
-    terminal_revenue = defaultdict(lambda: {'amount': 0, 'count': 0})
-    for t in all_transactions:
-        if t['status'] == 'success':
-            terminal_revenue[t['terminal_id']]['amount'] += float(t['amount'])
-            terminal_revenue[t['terminal_id']]['count'] += 1
-    
-    top_terminals = sorted(
-        [{'terminal_id': k, 'amount': v['amount'], 'count': v['count']} 
-         for k, v in terminal_revenue.items()],
-        key=lambda x: x['amount'],
-        reverse=True
-    )[:10]
-    
-    # Конверсия по типам оплаты
-    by_type = defaultdict(lambda: {'success': 0, 'failed': 0})
-    for t in all_transactions:
-        by_type[t['type']][t['status']] += 1
-    
-    conversion = {}
-    for payment_type, stats in by_type.items():
-        total = stats['success'] + stats['failed']
-        conversion[payment_type] = {
-            'rate': (stats['success'] / total * 100) if total > 0 else 0,
-            'success': stats['success'],
-            'failed': stats['failed']
-        }
-    
-    return jsonify({
-        'chart_data': dict(grouped),
-        'top_terminals': top_terminals,
-        'conversion': conversion
-    }), 200
-
-@app.route('/cabinet/export/transactions', methods=['GET'])
-def export_transactions():
-    """Экспорт транзакций в Excel или CSV"""
-    session = get_session(request)
-    if not session or session.get('type') != 'user':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    username = session['username']
-    user_terminals = users[username]['terminals']
-    export_format = request.args.get('format', 'csv')  # csv или xlsx
-    terminal_id = request.args.get('terminal_id')  # опционально
-    
-    # Собираем транзакции
-    all_transactions = []
-    if terminal_id and terminal_id in user_terminals:
-        # Экспорт одного терминала
-        if terminal_id in transactions:
-            for t in transactions[terminal_id]:
-                t_copy = t.copy()
-                t_copy['terminal_id'] = terminal_id
-                all_transactions.append(t_copy)
-    else:
-        # Экспорт всех терминалов
-        for tid in user_terminals:
-            if tid in transactions:
-                for t in transactions[tid]:
-                    t_copy = t.copy()
-                    t_copy['terminal_id'] = tid
-                    all_transactions.append(t_copy)
-    
-    # Сортируем по дате
-    all_transactions.sort(key=lambda x: x['timestamp'], reverse=True)
-    
-    if export_format == 'xlsx':
-        # Excel экспорт
-        try:
-            from openpyxl import Workbook
-            from openpyxl.styles import Font, PatternFill
-            
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Транзакции"
-            
-            # Заголовки
-            headers = ['Дата и время', 'Терминал', 'Сумма (₽)', 'Тип оплаты', 'Статус']
-            ws.append(headers)
-            
-            # Стиль заголовков
-            for cell in ws[1]:
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill(start_color="667eea", end_color="667eea", fill_type="solid")
-            
-            # Данные
-            for t in all_transactions:
-                ws.append([
-                    t['timestamp'],
-                    t['terminal_id'],
-                    float(t['amount']),
-                    t['type'],
-                    'Успешно' if t['status'] == 'success' else 'Неудачно'
-                ])
-            
-            # Сохраняем в память
-            output = BytesIO()
-            wb.save(output)
-            output.seek(0)
-            
-            response = make_response(output.read())
-            response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            response.headers['Content-Disposition'] = f'attachment; filename=transactions_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
-            
-            return response
-        except ImportError:
-            return jsonify({'error': 'openpyxl not installed'}), 500
-    
-    else:
-        # CSV экспорт
-        import csv
-        
-        output = BytesIO()
-        writer = csv.writer(output)
-        
-        # Заголовки
-        writer.writerow(['Дата и время', 'Терминал', 'Сумма (₽)', 'Тип оплаты', 'Статус'])
-        
-        # Данные
-        for t in all_transactions:
-            writer.writerow([
-                t['timestamp'],
-                t['terminal_id'],
-                t['amount'],
-                t['type'],
-                'Успешно' if t['status'] == 'success' else 'Неудачно'
-            ])
-        
-        output.seek(0)
-        response = make_response(output.read().decode('utf-8'))
-        response.headers['Content-Type'] = 'text/csv; charset=utf-8'
-        response.headers['Content-Disposition'] = f'attachment; filename=transactions_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
-        
-        return response
-
-@app.route('/cabinet/support/messages', methods=['GET'])
-def get_support_messages():
-    """Получить сообщения чата поддержки"""
-    session = get_session(request)
-    if not session or session.get('type') != 'user':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    username = session['username']
-    user = users.get(username)
-    
-    # Проверяем блокировку
-    try:
-        with open('users.json', 'r') as f:
-            bot_users = json.load(f)
-            telegram_id = user.get('telegram_id')
-            if telegram_id and telegram_id in bot_users.get('blocked', []):
-                return jsonify({'error': 'Вы заблокированы в боте', 'blocked': True}), 403
-    except Exception:
-        pass
-    
-    # Загружаем сообщения из заявки
-    messages = []
-    try:
-        with open('tickets.json', 'r') as f:
-            tickets = json.load(f)
-            telegram_id = user.get('telegram_id')
-            
-            # Ищем заявку пользователя
-            for tid, ticket in tickets.items():
-                if ticket.get('user_id') == telegram_id or ticket.get('username') == username:
-                    # Добавляем описание как первое сообщение
-                    messages.append({
-                        'message': ticket.get('description', ''),
-                        'is_admin': False,
-                        'timestamp': datetime.fromtimestamp(ticket.get('created_at', 0)).isoformat()
-                    })
-                    
-                    # Добавляем все сообщения из истории
-                    for msg in ticket.get('messages', []):
-                        messages.append({
-                            'message': msg.get('text', ''),
-                            'is_admin': msg.get('from') == 'admin',
-                            'timestamp': datetime.fromtimestamp(msg.get('timestamp', 0)).isoformat()
-                        })
-                    break
-    except Exception as e:
-        print(f"❌ Ошибка загрузки заявок: {e}")
-    
-    # Также загружаем из БД (для совместимости)
-    if DATABASE_URL and PSYCOPG_AVAILABLE:
-        try:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute('''
-                SELECT message, is_admin, created_at 
-                FROM support_messages 
-                WHERE username = %s 
-                ORDER BY created_at ASC
-            ''', (username,))
-            rows = cur.fetchall()
-            db_messages = [{'message': r[0], 'is_admin': r[1], 'timestamp': r[2].isoformat()} for r in rows]
-            
-            # Объединяем сообщения (избегаем дубликатов)
-            for db_msg in db_messages:
-                if not any(m['message'] == db_msg['message'] and m['timestamp'] == db_msg['timestamp'] for m in messages):
-                    messages.append(db_msg)
-            
-            cur.close()
-            conn.close()
-        except Exception as e:
-            print(f"❌ Ошибка загрузки из БД: {e}")
-    
-    # Сортируем по времени
-    messages.sort(key=lambda x: x['timestamp'])
-    
-    return jsonify({'messages': messages}), 200
-
-@app.route('/cabinet/support/send', methods=['POST'])
-def send_support_message():
-    """Отправить сообщение в поддержку"""
-    session = get_session(request)
-    if not session or session.get('type') != 'user':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    username = session['username']
-    data = request.json
-    message = data.get('message', '').strip()
-    
-    if not message:
-        return jsonify({'error': 'Empty message'}), 400
-    
-    # Получаем user_id пользователя
-    user = users.get(username)
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-    
-    # Проверяем заблокирован ли пользователь в боте
-    try:
-        import requests
-        BOT_TOKEN = os.environ.get('SUPPORT_BOT_TOKEN', '8742060687:AAHfsRrh1EKju-ZZ3CLHb2cBl-CkM63fByc')
-        
-        # Проверяем блокировку через файл users.json бота
-        try:
-            with open('users.json', 'r') as f:
-                bot_users = json.load(f)
-                # Ищем telegram_id пользователя по username
-                telegram_id = user.get('telegram_id')
-                if telegram_id and telegram_id in bot_users.get('blocked', []):
-                    return jsonify({'error': 'Вы заблокированы в боте'}), 403
-        except Exception:
-            pass
-        
-        # Загружаем или создаем заявку
-        try:
-            with open('tickets.json', 'r') as f:
-                tickets = json.load(f)
-        except Exception:
-            tickets = {}
-        
-        # Ищем открытую заявку пользователя или создаем новую
-        user_ticket_id = None
-        telegram_id = user.get('telegram_id')
-        
-        if telegram_id:
-            for tid, ticket in tickets.items():
-                if ticket.get('user_id') == telegram_id and ticket.get('status') in ['open', 'in_progress']:
-                    user_ticket_id = tid
-                    break
-        
-        if not user_ticket_id:
-            # Создаем новую заявку
-            ticket_id = max([int(k) for k in tickets.keys()], default=0) + 1
-            user_ticket_id = str(ticket_id)
-            
-            tickets[user_ticket_id] = {
-                'user_id': telegram_id or 0,
-                'username': username,
-                'first_name': username,
-                'description': message,
-                'status': 'open',
-                'created_at': time.time(),
-                'messages': [],
-                'from_web': True
-            }
-            
-            print(f"🆕 [SUPPORT] Created new ticket #{user_ticket_id} from web for {username}")
-            
-            # Уведомляем админов через Telegram с кнопками
-            try:
-                with open('users.json', 'r') as f:
-                    bot_users = json.load(f)
-                    admins = bot_users.get('admins', [])
-                    
-                    print(f"📢 [SUPPORT] Notifying {len(admins)} admins about ticket #{user_ticket_id}")
-                    
-                    # Создаем inline клавиатуру с кнопками
-                    keyboard = {
-                        'inline_keyboard': [
-                            [{'text': '✅ Принять', 'callback_data': f'accept_{user_ticket_id}'}],
-                        ]
-                    }
-                    
-                    for admin_id in admins:
-                        try:
-                            response = requests.post(
-                                f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage',
-                                json={
-                                    'chat_id': admin_id,
-                                    'text': f"🆕 🌐 Заявка #{user_ticket_id}\n"
-                                           f"От: {username} (веб-кабинет)\n"
-                                           f"Статус: open\n"
-                                           f"Создана: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
-                                           f"📝 {message}",
-                                    'reply_markup': keyboard
-                                }
-                            )
-                            if response.status_code == 200:
-                                print(f"✅ [SUPPORT] Notified admin {admin_id}")
-                            else:
-                                print(f"❌ [SUPPORT] Failed to notify admin {admin_id}: {response.text}")
-                        except Exception as e:
-                            print(f"❌ [SUPPORT] Error notifying admin {admin_id}: {e}")
-            except Exception as e:
-                print(f"❌ [SUPPORT] Error loading admins: {e}")
-        else:
-            # Добавляем сообщение к существующей заявке
-            tickets[user_ticket_id]['messages'].append({
-                'from': 'user',
-                'user_id': telegram_id or 0,
-                'text': message,
-                'timestamp': time.time(),
-                'from_web': True
-            })
-            
-            # Уведомляем назначенного админа
-            assigned_to = tickets[user_ticket_id].get('assigned_to')
-            if assigned_to:
-                try:
-                    requests.post(
-                        f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage',
-                        json={
-                            'chat_id': assigned_to,
-                            'text': f"💬 {username} ответил на заявку #{user_ticket_id} (из веб-кабинета):\n\n{message}"
-                        }
-                    )
-                except Exception:
-                    pass
-        
-        # Сохраняем заявки
-        with open('tickets.json', 'w', encoding='utf-8') as f:
-            json.dump(tickets, f, ensure_ascii=False, indent=2)
-        
-        print(f"💾 [SUPPORT] Saved ticket #{user_ticket_id} to tickets.json")
-        
-        # Сохраняем в БД для отображения в веб-интерфейсе
-        if DATABASE_URL and PSYCOPG_AVAILABLE:
-            try:
-                conn = get_db_connection()
-                cur = conn.cursor()
-                cur.execute('''
-                    INSERT INTO support_messages (username, message, is_admin, created_at)
-                    VALUES (%s, %s, FALSE, CURRENT_TIMESTAMP)
-                ''', (username, message))
-                conn.commit()
-                cur.close()
-                conn.close()
-            except Exception as e:
-                print(f"❌ Ошибка сохранения в БД: {e}")
-        
-        print(f"💬 [SUPPORT] {username}: {message} (ticket #{user_ticket_id})")
-        
-        return jsonify({'success': True, 'ticket_id': user_ticket_id}), 200
-        
-    except Exception as e:
-        print(f"❌ Ошибка отправки в бот: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/cabinet/faq', methods=['GET'])
-def get_faq():
-    """Получить FAQ"""
-    # Простой статический FAQ
-    faq = [
-        {
-            'question': 'Как привязать терминал?',
-            'answer': 'Введите ID терминала (TRM-####) и пароль в разделе "Привязать терминал".'
-        },
-        {
-            'question': 'Как открыть смену?',
-            'answer': 'Выберите терминал и нажмите "Открыть смену" в разделе управления сменой.'
-        },
-        {
-            'question': 'Как экспортировать транзакции?',
-            'answer': 'Перейдите в раздел "Аналитика" и нажмите кнопку "Скачать Excel" или "Скачать CSV".'
-        },
-        {
-            'question': 'Что делать если терминал не отвечает?',
-            'answer': 'Проверьте интернет-соединение терминала. Если проблема сохраняется, обратитесь в поддержку через чат.'
-        },
-        {
-            'question': 'Как посмотреть статистику?',
-            'answer': 'Нажмите "Подробнее" на карточке терминала или перейдите в раздел "Аналитика" для общей статистики.'
-        }
-    ]
-    return jsonify({'faq': faq}), 200
-
-@app.route('/cabinet/news', methods=['GET'])
-def get_news():
-    """Получить новости"""
-    # Простые статические новости
-    news = [
-        {
-            'id': 1,
-            'title': 'Добавлена темная тема',
-            'content': 'Теперь вы можете переключаться между светлой и темной темой интерфейса.',
-            'type': 'feature',
-            'date': '2026-04-06'
-        },
-        {
-            'id': 2,
-            'title': 'Новая аналитика',
-            'content': 'Доступны графики транзакций, рейтинг терминалов и анализ конверсии.',
-            'type': 'feature',
-            'date': '2026-04-06'
-        },
-        {
-            'id': 3,
-            'title': 'Экспорт в Excel и CSV',
-            'content': 'Теперь можно экспортировать транзакции в удобном формате для анализа.',
-            'type': 'feature',
-            'date': '2026-04-06'
-        },
-        {
-            'id': 4,
-            'title': 'Чат с поддержкой',
-            'content': 'Добавлен виджет чата для быстрой связи с технической поддержкой.',
-            'type': 'feature',
-            'date': '2026-04-06'
-        }
-    ]
-    return jsonify({'news': news}), 200
-
 @app.route('/static/logo.jpg')
 def serve_logo():
     """Отдать логотип"""
@@ -2624,6 +1711,81 @@ def serve_logo():
         return send_file('static_logo.jpg', mimetype='image/jpeg')
     except Exception:
         return '', 404
+
+
+
+# ===== АДМИН-ПАНЕЛЬ ДЛЯ РАЗРАБОТЧИКОВ =====
+
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'dev_secret_2026_sber')
+admin_sessions = {}
+
+@app.route('/admin/loginuser', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'GET':
+        error = request.args.get('error', '')
+        return f'''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Админ-панель</title>
+<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}}.card{{background:#fff;border-radius:20px;padding:40px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)}}h1{{color:#333;margin-bottom:10px}}input{{width:100%;padding:12px;border:2px solid #e0e0e0;border-radius:10px;margin:10px 0}}button{{width:100%;padding:14px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer}}.error{{background:#fee;color:#c33;padding:12px;border-radius:8px;margin-bottom:20px}}</style>
+</head><body><div class="card"><h1>Админ-панель</h1>
+{"<div class='error'>" + error + "</div>" if error else ""}
+<form method="POST"><input type="password" name="password" placeholder="Пароль" required><button type="submit">Войти</button></form></div></body></html>'''
+    
+    password = request.form.get('password')
+    if password == ADMIN_PASSWORD:
+        session_token = str(uuid.uuid4())
+        admin_sessions[session_token] = {'created_at': datetime.now().isoformat(), 'ip': request.remote_addr}
+        response = make_response(redirect('/admin/cabinet'))
+        response.set_cookie('admin_session', session_token, max_age=86400)
+        return response
+    return redirect('/admin/loginuser?error=Неверный пароль')
+
+@app.route('/admin/cabinet')
+def admin_cabinet():
+    session_token = request.cookies.get('admin_session')
+    if not session_token or session_token not in admin_sessions:
+        return redirect('/admin/loginuser')
+    
+    online_terminals = []
+    offline_terminals = []
+    
+    for terminal_id, terminal in terminals.items():
+        if terminal_id in last_seen:
+            last_seen_dt = last_seen[terminal_id]
+            if (datetime.now() - last_seen_dt).total_seconds() < 30:
+                online_terminals.append({
+                    'id': terminal_id,
+                    'state': terminal.get('current_payload', {}).get('state', 'idle'),
+                    'last_seen': last_seen_dt.strftime('%H:%M:%S'),
+                    'uuid': terminal.get('uuid', 'N/A'),
+                    'qr_password': terminal.get('qr_password', 'N/A')
+                })
+            else:
+                offline_terminals.append({'id': terminal_id, 'last_seen': last_seen_dt.strftime('%Y-%m-%d %H:%M:%S')})
+    
+    online_count = len(online_terminals)
+    offline_count = len(offline_terminals)
+    total_count = len(terminals)
+    
+    online_rows = ''.join([f"<tr><td>{t['id']}</td><td>{t['state']}</td><td>{t['uuid']}</td><td>{t['qr_password']}</td><td>{t['last_seen']}</td></tr>" for t in online_terminals])
+    offline_rows = ''.join([f"<tr><td>{t['id']}</td><td>{t['last_seen']}</td></tr>" for t in offline_terminals])
+    
+    return f'''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="5"><title>Админ-панель</title>
+<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}.header{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}}h1{{color:#333;margin-bottom:10px}}.stats{{display:flex;gap:20px;margin:20px 0}}.stat{{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:20px;border-radius:10px;flex:1;text-align:center}}.stat h2{{font-size:32px;margin-bottom:5px}}.stat p{{font-size:14px;opacity:0.9}}.section{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}}h2{{color:#333;margin-bottom:15px}}table{{width:100%;border-collapse:collapse}}th,td{{padding:12px;text-align:left;border-bottom:1px solid #e0e0e0}}th{{background:#f8f8f8;font-weight:600;color:#666}}tr:hover{{background:#f9f9f9}}.logout{{float:right;padding:10px 20px;background:#e74c3c;color:#fff;text-decoration:none;border-radius:5px}}</style>
+</head><body><div class="header"><h1>Админ-панель СберЭкран</h1><a href="/admin/logout" class="logout">Выйти</a></div>
+<div class="stats"><div class="stat"><h2>{online_count}</h2><p>Онлайн</p></div><div class="stat"><h2>{offline_count}</h2><p>Оффлайн</p></div><div class="stat"><h2>{total_count}</h2><p>Всего</p></div></div>
+<div class="section"><h2>Онлайн терминалы</h2><table><tr><th>ID</th><th>Состояние</th><th>UUID</th><th>QR пароль</th><th>Последняя активность</th></tr>{online_rows if online_rows else "<tr><td colspan='5'>Нет онлайн терминалов</td></tr>"}</table></div>
+<div class="section"><h2>Оффлайн терминалы</h2><table><tr><th>ID</th><th>Последняя активность</th></tr>{offline_rows if offline_rows else "<tr><td colspan='2'>Нет оффлайн терминалов</td></tr>"}</table></div>
+</body></html>'''
+
+@app.route('/admin/logout')
+def admin_logout():
+    session_token = request.cookies.get('admin_session')
+    if session_token and session_token in admin_sessions:
+        del admin_sessions[session_token]
+    response = make_response(redirect('/admin/loginuser'))
+    response.set_cookie('admin_session', '', max_age=0)
+    return response
 
 
 if __name__ == '__main__':
