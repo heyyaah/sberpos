@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}СберЭкран - Система оплаты{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="sber-bar"></div>
+  <div class="icon-wrap green">
+    <svg width="46" height="46" viewBox="0 0 46 46" fill="none">
+      <circle cx="23" cy="23" r="20" stroke="#21A038" stroke-width="3"/>
+      <path d="M23 13v20M13 23h20" stroke="#21A038" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <h1>СберЭкран</h1>
+  <p>Система безопасной оплаты через QR-коды.<br>
+     <span style="display:block;margin-top:12px">Отсканируйте QR-код на терминале для оплаты.</span>
+  </p>
+  <div class="sber-logo">
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <circle cx="11" cy="11" r="11" fill="#21A038"/>
+      <path d="M6 11.5C6 8.462 8.462 6 11.5 6a5.47 5.47 0 013.88 1.607l1.39-1.39A7.47 7.47 0 0011.5 4C7.358 4 4 7.358 4 11.5S7.358 19 11.5 19c3.166 0 5.88-1.963 7.037-4.768H16.2A5.504 5.504 0 0111.5 17C8.462 17 6 14.538 6 11.5z" fill="white"/>
+    </svg>
+    <span>СберЭкран</span>
+  </div>
+</div>
+{% endblock %}

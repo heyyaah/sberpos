@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}QR-код недействителен - СберЭкран{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="sber-bar"></div>
+  <div class="icon-wrap red">
+    <svg width="42" height="42" viewBox="0 0 42 42" fill="none">
+      <rect x="8" y="19" width="26" height="18" rx="4" stroke="#E5383B" stroke-width="3"/>
+      <path d="M14 19V14a8 8 0 0116 0v5" stroke="#E5383B" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="21" cy="28" r="2.5" fill="#E5383B"/>
+      <path d="M21 30.5V33" stroke="#E5383B" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <h1>QR-код недействителен</h1>
+  <p>Этот QR-код устарел или был использован ранее.<br>Отсканируйте новый QR-код с экрана терминала.</p>
+  <div class="sber-logo">
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <circle cx="11" cy="11" r="11" fill="#21A038"/>
+      <path d="M6 11.5C6 8.462 8.462 6 11.5 6a5.47 5.47 0 013.88 1.607l1.39-1.39A7.47 7.47 0 0011.5 4C7.358 4 4 7.358 4 11.5S7.358 19 11.5 19c3.166 0 5.88-1.963 7.037-4.768H16.2A5.504 5.504 0 0111.5 17C8.462 17 6 14.538 6 11.5z" fill="white"/>
+    </svg>
+    <span>СберЭкран</span>
+  </div>
+</div>
+{% endblock %}
