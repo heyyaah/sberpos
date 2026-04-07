@@ -1798,7 +1798,7 @@ def load_team_data():
         with open(TEAM_FILE, 'r', encoding='utf-8') as f:
             team_users = json.load(f)
     except:
-        team_users = {'admin': {'password': 'admin123', 'role': 'owner', 'full_name': 'Администратор', 'created_at': datetime.now().isoformat()}}
+        team_users = {'romancev228': {'password': 'lolkek123', 'role': 'owner', 'full_name': 'Романцев', 'created_at': datetime.now().isoformat()}}
         save_team_users()
     try:
         with open(TASKS_FILE, 'r', encoding='utf-8') as f:
@@ -1898,7 +1898,7 @@ def team_dashboard():
     
     role_features = ""
     if role == 'owner':
-        role_features = '<div class="section"><h2>⚙️ Управление (Владелец)</h2><div class="btn-group"><button onclick="location.href=\'/admin/manage/users\'">👥 Пользователи</button><button onclick="location.href=\'/admin/manage/tasks\'">📋 Создать задачу</button><button onclick="location.href=\'/admin/manage/news\'">📰 Добавить новость</button><button onclick="location.href=\'/admin/terminals\'">🖥️ Терминалы</button></div></div>'
+        role_features = '<div class="section"><h2>⚙️ Управление (Владелец)</h2><div class="btn-group"><button onclick="location.href=\'/admin/manage/users\'">👥 Пользователи</button><button onclick="location.href=\'/admin/manage/employees\'">👔 Сотрудники</button><button onclick="location.href=\'/admin/manage/tasks\'">📋 Создать задачу</button><button onclick="location.href=\'/admin/manage/news\'">📰 Добавить новость</button><button onclick="location.href=\'/admin/terminals\'">🖥️ Терминалы</button></div></div>'
     elif role == 'developer':
         role_features = '<div class="section"><h2>🔧 Инструменты разработчика</h2><div class="btn-group"><button onclick="location.href=\'/admin/terminals\'">🖥️ Терминалы</button><button onclick="location.href=\'/admin/logs\'">📜 Логи</button></div></div>'
     elif role == 'tester':
@@ -2153,6 +2153,44 @@ def manage_news():
 <div class="form-group"><label>Содержание:</label><textarea name="content" required></textarea></div>
 <button type="submit">Опубликовать новость</button>
 </form></div>
+</body></html>'''
+    return html
+
+@app.route('/admin/manage/employees')
+def manage_employees():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return redirect('/admin/login')
+    if team_sessions[session_token]['role'] != 'owner':
+        return "Access denied", 403
+    
+    employees_rows = ""
+    for username, user in team_users.items():
+        shift_status = "❌ Смена закрыта"
+        shift_time = ""
+        if username in team_shifts:
+            shift = team_shifts[username]
+            if shift.get('opened_at') and not shift.get('closed_at'):
+                shift_status = "✅ Смена открыта"
+                opened = datetime.fromisoformat(shift['opened_at'])
+                duration = datetime.now() - opened
+                hours = int(duration.total_seconds() // 3600)
+                minutes = int((duration.total_seconds() % 3600) // 60)
+                shift_time = f"{hours}ч {minutes}м"
+            elif shift.get('closed_at'):
+                shift_status = "❌ Смена закрыта"
+                closed = datetime.fromisoformat(shift['closed_at'])
+                shift_time = closed.strftime('%H:%M')
+        
+        employees_rows += f"<tr><td>{username}</td><td>{user['full_name']}</td><td>{user['role']}</td><td>{shift_status}</td><td>{shift_time}</td></tr>"
+    
+    html = f'''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Сотрудники</title>
+<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}.header{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}}h1{{color:#333}}.section{{background:#fff;padding:25px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}}h2{{color:#333;margin-bottom:20px}}table{{width:100%;border-collapse:collapse}}th,td{{padding:12px;text-align:left;border-bottom:1px solid #e0e0e0}}th{{background:#f8f8f8;font-weight:600;color:#666}}tr:hover{{background:#f9f9f9}}button{{padding:10px 20px;background:#21d4fd;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px}}button:hover{{opacity:0.9}}</style>
+<script>setInterval(function(){{location.reload()}}, 10000);</script>
+</head><body><div class="header"><h1>👔 Сотрудники</h1><button onclick="location.href='/admin/dashboard'">← Назад</button></div>
+<div class="section"><h2>Список сотрудников и их статус</h2>
+<table><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Статус смены</th><th>Время</th></tr>{employees_rows}</table></div>
 </body></html>'''
     return html
 
