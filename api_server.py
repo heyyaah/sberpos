@@ -4395,6 +4395,7 @@ def cabinet_page():
         let transactionsChart = null;
 
         function showAnalytics() {
+            selectedTerminal = null; // Сбрасываем выбранный терминал
             document.getElementById('analyticsSection').classList.remove('hidden');
             document.getElementById('terminalsSection').classList.add('hidden');
             document.getElementById('statsSection').classList.add('hidden');
@@ -4542,6 +4543,7 @@ def cabinet_page():
 
         // FAQ
         async function showFAQ() {
+            selectedTerminal = null; // Сбрасываем выбранный терминал
             document.getElementById('faqSection').classList.remove('hidden');
             document.getElementById('terminalsSection').classList.add('hidden');
             document.getElementById('statsSection').classList.add('hidden');
@@ -4569,6 +4571,7 @@ def cabinet_page():
 
         // Терминалы
         function showTerminals() {
+            selectedTerminal = null; // Сбрасываем выбранный терминал
             document.getElementById('terminalsSection').classList.remove('hidden');
             document.getElementById('statsSection').classList.add('hidden');
             document.getElementById('analyticsSection').classList.add('hidden');
@@ -4579,6 +4582,7 @@ def cabinet_page():
 
         // Новости
         async function showNews() {
+            selectedTerminal = null; // Сбрасываем выбранный терминал
             document.getElementById('newsSection').classList.remove('hidden');
             document.getElementById('terminalsSection').classList.add('hidden');
             document.getElementById('statsSection').classList.add('hidden');
@@ -4611,6 +4615,7 @@ def cabinet_page():
 
         // Фото лиц
         async function showFacePhotos() {
+            selectedTerminal = null; // Сбрасываем выбранный терминал
             document.getElementById('facePhotosSection').classList.remove('hidden');
             document.getElementById('terminalsSection').classList.add('hidden');
             document.getElementById('statsSection').classList.add('hidden');
