@@ -1637,42 +1637,62 @@ def payment_page_with_key(terminal_id, key):
     if state not in ['pay', 'payPending']:
         return render_template_string('''
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>СберЭкран - Оплата</title>
+    <title>СберЭкран</title>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            border-radius: 20px;
-            padding: 40px;
-            max-width: 400px;
-            width: 100%;
-            text-align: center;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        h1 { color: #333; margin-bottom: 20px; font-size: 24px; }
-        p { color: #666; font-size: 16px; line-height: 1.6; }
-        .icon { font-size: 64px; margin-bottom: 20px; }
+        :root { --yellow:#F5A623; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Manrope',sans-serif; background:#F2F4F7; min-height:100vh;
+               display:flex; align-items:center; justify-content:center; padding:24px; position:relative; overflow:hidden; }
+        body::before { content:''; position:fixed; inset:0;
+            background:radial-gradient(ellipse 80% 60% at 10% 0%,rgba(33,160,56,.07) 0%,transparent 60%),
+                        radial-gradient(ellipse 60% 40% at 90% 100%,rgba(19,70,163,.06) 0%,transparent 60%);
+            pointer-events:none; z-index:0; }
+        .card { background:#fff; border-radius:24px; padding:48px 40px 40px; max-width:420px;
+                width:100%; text-align:center; box-shadow:0 8px 40px rgba(0,0,0,.10);
+                position:relative; z-index:1; animation:fadeUp .5s cubic-bezier(.22,1,.36,1) both; }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(28px) scale(.98)} to{opacity:1;transform:none} }
+        .sber-bar { position:absolute; top:0; left:0; right:0; height:5px;
+                    border-radius:24px 24px 0 0; background:linear-gradient(90deg,#21A038,#2DC653); }
+        .icon-wrap { width:88px; height:88px; border-radius:50%; display:flex;
+                     align-items:center; justify-content:center; margin:0 auto 28px; background:#FEF6E7; }
+        .icon-wrap svg { animation:iconPop .6s cubic-bezier(.34,1.56,.64,1) .2s both; }
+        @keyframes iconPop { from{transform:scale(.4);opacity:0} to{transform:scale(1);opacity:1} }
+        h1 { font-size:22px; font-weight:800; color:#1A1A2E; margin-bottom:12px; letter-spacing:-0.3px; }
+        p  { color:#6B7280; font-size:15px; line-height:1.65; font-weight:500; }
+        .tid { display:inline-block; background:#F3F4F6; border:1px solid #E5E7EB;
+               border-radius:8px; padding:2px 10px; font-family:monospace; font-size:13px;
+               color:#1A1A2E; font-weight:700; margin-top:8px; letter-spacing:0.5px; }
+        .sber-logo { display:flex; align-items:center; justify-content:center;
+                     gap:8px; margin-top:28px; opacity:.45; }
+        .sber-logo span { font-size:13px; font-weight:700; color:#1A1A2E; letter-spacing:0.3px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="icon">⏳</div>
-        <h1>Нет активных оплат</h1>
-        <p>Оплата на терминале {{ terminal_id }} не активна. Пожалуйста, запустите оплату заново.</p>
-    </div>
+<div class="card">
+  <div class="sber-bar"></div>
+  <div class="icon-wrap">
+    <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+      <circle cx="22" cy="22" r="19" stroke="#F5A623" stroke-width="3"/>
+      <path d="M22 12V24" stroke="#F5A623" stroke-width="3.5" stroke-linecap="round"/>
+      <circle cx="22" cy="31" r="2" fill="#F5A623"/>
+    </svg>
+  </div>
+  <h1>Нет активной оплаты</h1>
+  <p>Оплата на терминале <span class="tid">{{ terminal_id }}</span><br>
+     <span style="display:block;margin-top:8px">сейчас не активна. Вернитесь к кассе и запустите оплату заново.</span>
+  </p>
+  <div class="sber-logo">
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="11" fill="#21A038"/>
+      <path d="M6 11.5C6 8.462 8.462 6 11.5 6a5.47 5.47 0 013.88 1.607l1.39-1.39A7.47 7.47 0 0011.5 4C7.358 4 4 7.358 4 11.5S7.358 19 11.5 19c3.166 0 5.88-1.963 7.037-4.768H16.2A5.504 5.504 0 0111.5 17C8.462 17 6 14.538 6 11.5z" fill="white"/>
+    </svg>
+    <span>СберЭкран</span>
+  </div>
+</div>
 </body>
 </html>
         ''', terminal_id=terminal_id), 404
@@ -1683,42 +1703,58 @@ def payment_page_with_key(terminal_id, key):
         print(f"❌ [PAY] {terminal_id}: Invalid key {key} (expected {expected_key})")
         return render_template_string('''
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>СберЭкран - Ошибка</title>
+    <title>СберЭкран</title>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            border-radius: 20px;
-            padding: 40px;
-            max-width: 400px;
-            width: 100%;
-            text-align: center;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        h1 { color: #333; margin-bottom: 20px; font-size: 24px; }
-        p { color: #666; font-size: 16px; line-height: 1.6; }
-        .icon { font-size: 64px; margin-bottom: 20px; }
+        :root { --red:#E5383B; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Manrope',sans-serif; background:#F2F4F7; min-height:100vh;
+               display:flex; align-items:center; justify-content:center; padding:24px; position:relative; overflow:hidden; }
+        body::before { content:''; position:fixed; inset:0;
+            background:radial-gradient(ellipse 80% 60% at 10% 0%,rgba(33,160,56,.07) 0%,transparent 60%),
+                        radial-gradient(ellipse 60% 40% at 90% 100%,rgba(19,70,163,.06) 0%,transparent 60%);
+            pointer-events:none; z-index:0; }
+        .card { background:#fff; border-radius:24px; padding:48px 40px 40px; max-width:420px;
+                width:100%; text-align:center; box-shadow:0 8px 40px rgba(0,0,0,.10);
+                position:relative; z-index:1; animation:fadeUp .5s cubic-bezier(.22,1,.36,1) both; }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(28px) scale(.98)} to{opacity:1;transform:none} }
+        .sber-bar { position:absolute; top:0; left:0; right:0; height:5px;
+                    border-radius:24px 24px 0 0; background:linear-gradient(90deg,#21A038,#2DC653); }
+        .icon-wrap { width:88px; height:88px; border-radius:50%; display:flex;
+                     align-items:center; justify-content:center; margin:0 auto 28px; background:#FDECEA; }
+        .icon-wrap svg { animation:iconPop .6s cubic-bezier(.34,1.56,.64,1) .2s both; }
+        @keyframes iconPop { from{transform:scale(.4);opacity:0} to{transform:scale(1);opacity:1} }
+        h1 { font-size:22px; font-weight:800; color:#1A1A2E; margin-bottom:12px; letter-spacing:-0.3px; }
+        p  { color:#6B7280; font-size:15px; line-height:1.65; font-weight:500; }
+        .sber-logo { display:flex; align-items:center; justify-content:center;
+                     gap:8px; margin-top:28px; opacity:.45; }
+        .sber-logo span { font-size:13px; font-weight:700; color:#1A1A2E; letter-spacing:0.3px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="icon">🔒</div>
-        <h1>Неверный ключ оплаты</h1>
-        <p>QR-код недействителен или устарел. Пожалуйста, отсканируйте новый QR-код.</p>
-    </div>
+<div class="card">
+  <div class="sber-bar"></div>
+  <div class="icon-wrap">
+    <svg width="42" height="42" viewBox="0 0 42 42" fill="none">
+      <rect x="8" y="19" width="26" height="18" rx="4" stroke="#E5383B" stroke-width="3"/>
+      <path d="M14 19V14a8 8 0 0116 0v5" stroke="#E5383B" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="21" cy="28" r="2.5" fill="#E5383B"/>
+      <path d="M21 30.5V33" stroke="#E5383B" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <h1>QR-код недействителен</h1>
+  <p>Этот QR-код устарел или был использован ранее.<br>Отсканируйте новый QR-код с экрана терминала.</p>
+  <div class="sber-logo">
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="11" fill="#21A038"/>
+      <path d="M6 11.5C6 8.462 8.462 6 11.5 6a5.47 5.47 0 013.88 1.607l1.39-1.39A7.47 7.47 0 0011.5 4C7.358 4 4 7.358 4 11.5S7.358 19 11.5 19c3.166 0 5.88-1.963 7.037-4.768H16.2A5.504 5.504 0 0111.5 17C8.462 17 6 14.538 6 11.5z" fill="white"/>
+    </svg>
+    <span>СберЭкран</span>
+  </div>
+</div>
 </body>
 </html>
         '''), 403
@@ -1730,162 +1766,75 @@ def payment_page_with_key(terminal_id, key):
     
     return render_template_string('''
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>СберЭкран - Оплата {{ amount }} ₽</title>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root { --green:#21A038; }
+        * { margin:0; padding:0; box-sizing:border-box; }
         body {
-            font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
+            font-family:'Manrope',sans-serif; background:#F2F4F7; min-height:100vh;
+            display:flex; align-items:center; justify-content:center; padding:24px; position:relative; overflow:hidden;
         }
-        .container {
-            background: white;
-            border-radius: 20px;
-            padding: 40px;
-            max-width: 400px;
-            width: 100%;
-            text-align: center;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        .logo { font-size: 48px; margin-bottom: 20px; }
-        h1 { color: #333; margin-bottom: 10px; font-size: 28px; }
-        .amount {
-            font-size: 48px;
-            font-weight: bold;
-            color: #667eea;
-            margin: 20px 0;
-        }
-        .terminal { color: #999; font-size: 14px; margin-bottom: 30px; }
-        .btn {
-            width: 100%;
-            padding: 18px;
-            border: none;
-            border-radius: 12px;
-            font-size: 18px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-bottom: 12px;
-        }
-        .btn-pay {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        .btn-pay:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4); }
-        .btn-pay:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .btn-cancel {
-            background: #f5f5f5;
-            color: #666;
-        }
-        .btn-cancel:hover { background: #e0e0e0; }
-        .status {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 10px;
-            font-size: 16px;
-            display: none;
-        }
-        .status.success { background: #d4edda; color: #155724; display: block; }
-        .status.error { background: #f8d7da; color: #721c24; display: block; }
-        .status.waiting { background: #fff3cd; color: #856404; display: block; }
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
-            display: none;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        body::before { content:''; position:fixed; inset:0;
+            background:radial-gradient(ellipse 80% 60% at 10% 0%,rgba(33,160,56,.07) 0%,transparent 60%),
+                        radial-gradient(ellipse 60% 40% at 90% 100%,rgba(19,70,163,.06) 0%,transparent 60%);
+            pointer-events:none; z-index:0; }
+        .card { background:#fff; border-radius:24px; padding:48px 40px 40px; max-width:420px;
+                width:100%; text-align:center; box-shadow:0 8px 40px rgba(0,0,0,.10);
+                position:relative; z-index:1; animation:fadeUp .5s cubic-bezier(.22,1,.36,1) both; }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(28px) scale(.98)} to{opacity:1;transform:none} }
+        .sber-bar { position:absolute; top:0; left:0; right:0; height:5px;
+                    border-radius:24px 24px 0 0; background:linear-gradient(90deg,#21A038,#2DC653); }
+        .icon-wrap { width:88px; height:88px; border-radius:50%; display:flex;
+                     align-items:center; justify-content:center; margin:0 auto 28px; background:#E8F5EC; }
+        .icon-wrap svg { animation:iconPop .6s cubic-bezier(.34,1.56,.64,1) .2s both; }
+        @keyframes iconPop { from{transform:scale(.4);opacity:0} to{transform:scale(1);opacity:1} }
+        h1 { font-size:22px; font-weight:800; color:#1A1A2E; margin-bottom:12px; letter-spacing:-0.3px; }
+        p  { color:#6B7280; font-size:15px; line-height:1.65; font-weight:500; }
+        .tid { display:inline-block; background:#F3F4F6; border:1px solid #E5E7EB;
+               border-radius:8px; padding:2px 10px; font-family:monospace; font-size:13px;
+               color:#1A1A2E; font-weight:700; margin-top:8px; letter-spacing:0.5px; }
+        .btn { display:inline-flex; align-items:center; gap:8px; margin-top:28px;
+               padding:13px 28px; border-radius:14px; font-size:15px; font-weight:700;
+               font-family:'Manrope',sans-serif; cursor:pointer; border:none; text-decoration:none;
+               background:linear-gradient(135deg,#21A038,#2DC653); color:white;
+               box-shadow:0 4px 16px rgba(33,160,56,.30); transition:transform .15s,box-shadow .15s; }
+        .btn:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(33,160,56,.35); }
+        .sber-logo { display:flex; align-items:center; justify-content:center;
+                     gap:8px; margin-top:28px; opacity:.45; }
+        .sber-logo span { font-size:13px; font-weight:700; color:#1A1A2E; letter-spacing:0.3px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="logo">💳</div>
-        <h1>Оплата по QR-коду</h1>
-        <div class="amount">{{ amount }} ₽</div>
-        <div class="terminal">Терминал: {{ terminal_id }}</div>
-        
-        <button class="btn btn-pay" id="payBtn" onclick="pay()">Оплатить</button>
-        <button class="btn btn-cancel" onclick="cancel()">Отменить</button>
-        
-        <div class="loader" id="loader"></div>
-        <div class="status" id="status"></div>
-    </div>
-
-    <script>
-        const terminalId = '{{ terminal_id }}';
-        const paymentKey = '{{ key }}';
-
-        function showStatus(message, type) {
-            const status = document.getElementById('status');
-            status.textContent = message;
-            status.className = 'status ' + type;
-        }
-
-        function showLoader(show) {
-            document.getElementById('loader').style.display = show ? 'block' : 'none';
-        }
-
-        async function pay() {
-            const btn = document.getElementById('payBtn');
-            btn.disabled = true;
-            showLoader(true);
-            showStatus('Обработка платежа...', 'waiting');
-
-            try {
-                // Отправляем запрос на подтверждение QR-оплаты
-                const response = await fetch('/api/qr/confirm', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        terminal_id: terminalId,
-                        key: paymentKey,
-                        approved: true 
-                    })
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    showLoader(false);
-                    showStatus('✅ Оплата успешна!', 'success');
-                    setTimeout(() => {
-                        window.close();
-                    }, 2000);
-                } else {
-                    showLoader(false);
-                    showStatus('❌ ' + (data.error || 'Ошибка оплаты'), 'error');
-                    btn.disabled = false;
-                }
-            } catch (error) {
-                showLoader(false);
-                showStatus('❌ Ошибка соединения', 'error');
-                btn.disabled = false;
-            }
-        }
-
-        function cancel() {
-            window.close();
-        }
-    </script>
+<div class="card">
+  <div class="sber-bar"></div>
+  <div class="icon-wrap">
+    <svg width="46" height="46" viewBox="0 0 46 46" fill="none">
+      <rect x="4" y="10" width="38" height="26" rx="6" stroke="#21A038" stroke-width="3"/>
+      <path d="M4 18H42" stroke="#21A038" stroke-width="3"/>
+      <rect x="10" y="25" width="10" height="4" rx="2" fill="#21A038"/>
+      <rect x="26" y="25" width="10" height="4" rx="2" fill="#21A038" fill-opacity="0.4"/>
+    </svg>
+  </div>
+  <h1>Подтвердите оплату</h1>
+  <p>Терминал <span class="tid">{{ terminal_id }}</span> ожидает подтверждения платежа.</p>
+  <a href="https://www.sberbank.com/sms/pbpn?requisiteNumber={{ terminal_id }}" class="btn">
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M9 2L16 9L9 16M2 9h14" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Оплатить через СберПей
+  </a>
+  <div class="sber-logo">
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="11" fill="#21A038"/>
+      <path d="M6 11.5C6 8.462 8.462 6 11.5 6a5.47 5.47 0 013.88 1.607l1.39-1.39A7.47 7.47 0 0011.5 4C7.358 4 4 7.358 4 11.5S7.358 19 11.5 19c3.166 0 5.88-1.963 7.037-4.768H16.2A5.504 5.504 0 0111.5 17C8.462 17 6 14.538 6 11.5z" fill="white"/>
+    </svg>
+    <span>СберЭкран</span>
+  </div>
+</div>
 </body>
 </html>
     ''', terminal_id=terminal_id, amount=amount, key=key)
