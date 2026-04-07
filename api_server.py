@@ -3,7 +3,7 @@ API Server для управления терминалами SberPOS
 Эмулирует серверную часть для тестирования
 """
 
-from flask import Flask, request, jsonify, make_response, render_template_string, send_file
+from flask import Flask, request, jsonify, make_response, render_template_string, send_file, redirect
 import json
 import uuid
 import random
@@ -1639,16 +1639,7 @@ def index():
             'POST /admin/confirm_face',
             'POST /admin/confirm_qr - Confirm/decline QR payment',
             'POST /admin/delete_terminal - Delete terminal',
-            'GET /admin/status',
-            '--- Personal Cabinet ---',
-            'POST /cabinet/register - Register user',
-            'POST /cabinet/login - Login user',
-            'POST /cabinet/bind_terminal - Bind terminal to user',
-            'GET /cabinet/terminals - Get user terminals',
-            'GET /cabinet/stats/<terminal_id> - Get terminal statistics',
-            'POST /cabinet/shift/open - Open shift',
-            'POST /cabinet/shift/close - Close shift',
-            'GET /cabinet/shift/status - Get shift status'
+            'GET /admin/status'
         ],
         'terminals_count': len(terminals)
     }), 200
