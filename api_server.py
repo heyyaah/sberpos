@@ -1816,8 +1816,29 @@ def team_dashboard():
     
     shift_opened = username in team_shifts and team_shifts[username].get('opened_at') and not team_shifts[username].get('closed_at')
     
-    pending_tasks = [t for t in team_tasks if t['status'] == 'pending']
-    my_tasks = [t for t in team_tasks if t.get('assigned_to') == username and t['status'] in ['pending', 'in_progress']]
+    # Фильтруем задачи с учетом нового формата assigned_to (может быть список)
+    pending_tasks = []
+    my_tasks = []
+    
+    for t in team_tasks:
+        assigned_to = t.get('assigned_to')
+        
+        # Проверяем pending задачи (назначенные текущему пользователю)
+        if t['status'] == 'pending':
+            if isinstance(assigned_to, list) and username in assigned_to:
+                pending_tasks.append(t)
+            elif assigned_to == username:
+                pending_tasks.append(t)
+        
+        # Проверяем мои активные задачи
+        if t['status'] in ['pending', 'in_progress']:
+            accepted_by = t.get('accepted_by')
+            if accepted_by == username:
+                my_tasks.append(t)
+            elif isinstance(assigned_to, list) and username in assigned_to and t['status'] == 'pending':
+                my_tasks.append(t)
+            elif assigned_to == username:
+                my_tasks.append(t)
     completed_tasks = [t for t in team_tasks if t['status'] == 'completed']
     
     recent_news = sorted(team_news, key=lambda x: x['created_at'], reverse=True)[:5]
@@ -1827,11 +1848,25 @@ def team_dashboard():
     
     news_html = ''.join([f"<div class='news-item'><h4>{n['title']}</h4><p>{n['content']}</p><small>{n['created_at'][:16]} - {n['author']}</small></div>" for n in recent_news]) if recent_news else "<p style='color:#999'>Нет новостей</p>"
     
-    pending_html = ''.join([f"<div class='task-item'><h4>{t['title']}</h4><p>{t['description']}</p><small>Создал: {t['created_by']} | {t['created_at'][:10]}</small><div class='task-actions'><button onclick='acceptTask({t['id']})'>Принять</button><button onclick='rejectTask({t['id']})' class='btn-reject'>Отклонить</button></div></div>" for t in pending_tasks]) if pending_tasks else "<p style='color:#999'>Нет новых задач</p>"
+    # Генерируем HTML для задач с информацией о назначении
+    def render_task_assigned(task):
+        assigned_to = task.get('assigned_to')
+        if isinstance(assigned_to, list):
+            if len(assigned_to) > 3:
+                return f"Назначено: {len(assigned_to)} сотрудникам"
+            else:
+                names = [team_users.get(u, {}).get('full_name', u) for u in assigned_to]
+                return f"Назначено: {', '.join(names)}"
+        elif assigned_to:
+            return f"Назначено: {team_users.get(assigned_to, {}).get('full_name', assigned_to)}"
+        else:
+            return "Назначено: Всем"
     
-    my_html = ''.join([f"<div class='task-item'><h4>{t['title']}</h4><p>{t['description']}</p><small>Статус: {t['status']}</small><button onclick='completeTask({t['id']})'>Завершить</button></div>" for t in my_tasks]) if my_tasks else "<p style='color:#999'>Нет активных задач</p>"
+    pending_html = ''.join([f"<div class='task-item'><h4>{t['title']}</h4><p>{t['description']}</p><small>Создал: {t['created_by']} | {t['created_at'][:10]}<br>{render_task_assigned(t)}</small><div class='task-actions'><button onclick='acceptTask({t['id']})'>Принять</button><button onclick='rejectTask({t['id']})' class='btn-reject'>Отклонить</button></div></div>" for t in pending_tasks]) if pending_tasks else "<p style='color:#999'>Нет новых задач</p>"
     
-    completed_html = ''.join([f"<div class='task-item completed'><h4>{t['title']}</h4><p>{t['description']}</p><small>Завершено: {t.get('completed_at', 'N/A')[:16]}</small></div>" for t in completed_tasks[-10:]]) if completed_tasks else "<p style='color:#999'>Нет завершённых задач</p>"
+    my_html = ''.join([f"<div class='task-item'><h4>{t['title']}</h4><p>{t['description']}</p><small>Статус: {t['status']}<br>{render_task_assigned(t)}</small><button onclick='completeTask({t['id']})'>Завершить</button></div>" for t in my_tasks]) if my_tasks else "<p style='color:#999'>Нет активных задач</p>"
+    
+    completed_html = ''.join([f"<div class='task-item completed'><h4>{t['title']}</h4><p>{t['description']}</p><small>Завершено: {t.get('completed_at', 'N/A')[:16]}<br>{render_task_assigned(t)}</small></div>" for t in completed_tasks[-10:]]) if completed_tasks else "<p style='color:#999'>Нет завершённых задач</p>"
     
     role_features = ""
     if role == 'owner':
@@ -1897,8 +1932,14 @@ def team_task_accept():
     task_id = data.get('task_id')
     for task in team_tasks:
         if task['id'] == task_id:
+            # Проверяем, назначена ли задача этому пользователю
+            assigned_to = task.get('assigned_to')
+            if isinstance(assigned_to, list):
+                if username not in assigned_to:
+                    return jsonify({'error': 'Task not assigned to you', 'success': False}), 403
+            
             task['status'] = 'in_progress'
-            task['assigned_to'] = username
+            task['accepted_by'] = username  # Кто принял задачу
             save_team_tasks()
             return jsonify({'success': True})
     return jsonify({'error': 'Task not found'}), 404
@@ -2028,6 +2069,18 @@ def manage_tasks():
     if request.method == 'POST':
         title = request.form.get('title')
         description = request.form.get('description')
+        assign_type = request.form.get('assign_type', 'all')  # all, role, specific
+        target_role = request.form.get('target_role', '')
+        target_users = request.form.getlist('target_users[]')
+        
+        # Определяем кому назначена задача
+        assigned_to = []
+        if assign_type == 'all':
+            assigned_to = list(team_users.keys())
+        elif assign_type == 'role' and target_role:
+            assigned_to = [username for username, user in team_users.items() if user.get('role') == target_role]
+        elif assign_type == 'specific':
+            assigned_to = target_users
         
         new_id = max([t['id'] for t in team_tasks], default=0) + 1
         team_tasks.append({
@@ -2037,22 +2090,108 @@ def manage_tasks():
             'created_by': team_sessions[session_token]['username'],
             'created_at': datetime.now().isoformat(),
             'status': 'pending',
-            'assigned_to': None
+            'assigned_to': assigned_to,  # Теперь это список
+            'assign_type': assign_type,
+            'target_role': target_role if assign_type == 'role' else None
         })
         save_team_tasks()
         return redirect('/admin/manage/tasks?success=1')
     
+    # Генерируем список пользователей для выбора
+    users_checkboxes = ''
+    for username, user in team_users.items():
+        full_name = user.get('full_name', username)
+        role = user.get('role', 'unknown')
+        users_checkboxes += f'<label class="checkbox-label"><input type="checkbox" name="target_users[]" value="{username}" class="user-checkbox"> {full_name} ({role})</label>'
+    
     html = f'''<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Управление задачами</title>
-<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}.header{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}}h1{{color:#333}}.section{{background:#fff;padding:25px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}}h2{{color:#333;margin-bottom:20px}}input,textarea{{width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:5px;margin:5px 0;font-size:14px;font-family:Arial,sans-serif}}textarea{{min-height:100px}}button{{padding:10px 20px;background:#21d4fd;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px;margin-top:10px}}button:hover{{opacity:0.9}}.form-group{{margin-bottom:15px}}label{{display:block;color:#666;margin-bottom:5px;font-weight:600}}.success{{background:#d4edda;color:#155724;padding:12px;border-radius:5px;margin-bottom:20px}}</style>
-</head><body><div class="header"><h1>📋 Управление задачами</h1><button onclick="location.href='/admin/dashboard'">← Назад</button></div>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}
+.header{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}}
+h1{{color:#333}}
+.section{{background:#fff;padding:25px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}}
+h2{{color:#333;margin-bottom:20px}}
+input,textarea,select{{width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:5px;margin:5px 0;font-size:14px;font-family:Arial,sans-serif}}
+textarea{{min-height:100px}}
+button{{padding:10px 20px;background:#21d4fd;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px;margin-top:10px}}
+button:hover{{opacity:0.9}}
+.form-group{{margin-bottom:15px}}
+label{{display:block;color:#666;margin-bottom:5px;font-weight:600}}
+.success{{background:#d4edda;color:#155724;padding:12px;border-radius:5px;margin-bottom:20px}}
+.assign-section{{display:none;margin-top:10px;padding:15px;background:#f9f9f9;border-radius:8px}}
+.assign-section.active{{display:block}}
+.checkbox-label{{display:block;padding:8px;margin:5px 0;background:#fff;border-radius:5px;cursor:pointer;font-weight:normal}}
+.checkbox-label:hover{{background:#f0f0f0}}
+.checkbox-label input{{width:auto;margin-right:10px}}
+.btn-select-all{{background:#27ae60;padding:8px 15px;font-size:13px;margin-bottom:10px}}
+</style>
+<script>
+function updateAssignSection() {{
+    const assignType = document.getElementById('assign_type').value;
+    document.querySelectorAll('.assign-section').forEach(el => el.classList.remove('active'));
+    if (assignType === 'role') {{
+        document.getElementById('role-section').classList.add('active');
+    }} else if (assignType === 'specific') {{
+        document.getElementById('users-section').classList.add('active');
+    }}
+}}
+function selectAllUsers() {{
+    document.querySelectorAll('.user-checkbox').forEach(cb => cb.checked = true);
+}}
+function deselectAllUsers() {{
+    document.querySelectorAll('.user-checkbox').forEach(cb => cb.checked = false);
+}}
+</script>
+</head><body>
+<div class="header">
+    <h1>📋 Управление задачами</h1>
+    <button onclick="location.href='/admin/dashboard'">← Назад</button>
+</div>
 {"<div class='success'>Задача успешно создана!</div>" if request.args.get('success') else ""}
-<div class="section"><h2>Создать новую задачу</h2>
-<form method="POST">
-<div class="form-group"><label>Название:</label><input type="text" name="title" required></div>
-<div class="form-group"><label>Описание:</label><textarea name="description" required></textarea></div>
-<button type="submit">Создать задачу</button>
-</form></div>
+<div class="section">
+    <h2>Создать новую задачу</h2>
+    <form method="POST">
+        <div class="form-group">
+            <label>Название:</label>
+            <input type="text" name="title" required>
+        </div>
+        <div class="form-group">
+            <label>Описание:</label>
+            <textarea name="description" required></textarea>
+        </div>
+        <div class="form-group">
+            <label>Назначить задачу:</label>
+            <select name="assign_type" id="assign_type" onchange="updateAssignSection()">
+                <option value="all">Всем сотрудникам</option>
+                <option value="role">По роли</option>
+                <option value="specific">Конкретным сотрудникам</option>
+            </select>
+        </div>
+        
+        <div id="role-section" class="assign-section">
+            <label>Выберите роль:</label>
+            <select name="target_role">
+                <option value="">-- Выберите роль --</option>
+                <option value="owner">Владелец</option>
+                <option value="developer">Разработчик</option>
+                <option value="tester">Тестировщик</option>
+                <option value="employee">Сотрудник</option>
+            </select>
+        </div>
+        
+        <div id="users-section" class="assign-section">
+            <button type="button" onclick="selectAllUsers()" class="btn-select-all">✓ Выбрать всех</button>
+            <button type="button" onclick="deselectAllUsers()" class="btn-select-all" style="background:#e74c3c">✗ Снять выбор</button>
+            <div style="margin-top:10px">
+                {users_checkboxes}
+            </div>
+        </div>
+        
+        <button type="submit">Создать задачу</button>
+    </form>
+</div>
 </body></html>'''
     return html
 
