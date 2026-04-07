@@ -1570,42 +1570,61 @@ def payment_page_with_key(terminal_id, key):
     if terminal_id not in terminals:
         return render_template_string('''
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>СберЭкран - Ошибка</title>
+    <title>СберЭкран</title>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            border-radius: 20px;
-            padding: 40px;
-            max-width: 400px;
-            width: 100%;
-            text-align: center;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        h1 { color: #333; margin-bottom: 20px; font-size: 24px; }
-        p { color: #666; font-size: 16px; line-height: 1.6; }
-        .icon { font-size: 64px; margin-bottom: 20px; }
+        :root { --green:#21A038; --red:#E5383B; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Manrope',sans-serif; background:#F2F4F7; min-height:100vh;
+               display:flex; align-items:center; justify-content:center; padding:24px; position:relative; overflow:hidden; }
+        body::before { content:''; position:fixed; inset:0;
+            background:radial-gradient(ellipse 80% 60% at 10% 0%,rgba(33,160,56,.07) 0%,transparent 60%),
+                        radial-gradient(ellipse 60% 40% at 90% 100%,rgba(19,70,163,.06) 0%,transparent 60%);
+            pointer-events:none; z-index:0; }
+        .card { background:#fff; border-radius:24px; padding:48px 40px 40px; max-width:420px;
+                width:100%; text-align:center; box-shadow:0 8px 40px rgba(0,0,0,.10);
+                position:relative; z-index:1; animation:fadeUp .5s cubic-bezier(.22,1,.36,1) both; }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(28px) scale(.98)} to{opacity:1;transform:none} }
+        .sber-bar { position:absolute; top:0; left:0; right:0; height:5px;
+                    border-radius:24px 24px 0 0; background:linear-gradient(90deg,#21A038,#2DC653); }
+        .icon-wrap { width:88px; height:88px; border-radius:50%; display:flex;
+                     align-items:center; justify-content:center; margin:0 auto 28px; background:#FDECEA; }
+        .icon-wrap svg { animation:iconPop .6s cubic-bezier(.34,1.56,.64,1) .2s both; }
+        @keyframes iconPop { from{transform:scale(.4);opacity:0} to{transform:scale(1);opacity:1} }
+        h1 { font-size:22px; font-weight:800; color:#1A1A2E; margin-bottom:12px; letter-spacing:-0.3px; }
+        p  { color:#6B7280; font-size:15px; line-height:1.65; font-weight:500; }
+        .tid { display:inline-block; background:#F3F4F6; border:1px solid #E5E7EB;
+               border-radius:8px; padding:2px 10px; font-family:monospace; font-size:13px;
+               color:#1A1A2E; font-weight:700; margin-top:16px; letter-spacing:0.5px; }
+        .sber-logo { display:flex; align-items:center; justify-content:center;
+                     gap:8px; margin-top:28px; opacity:.45; }
+        .sber-logo span { font-size:13px; font-weight:700; color:#1A1A2E; letter-spacing:0.3px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="icon">❌</div>
-        <h1>Терминал не найден</h1>
-        <p>Терминал {{ terminal_id }} не существует.</p>
-    </div>
+<div class="card">
+  <div class="sber-bar"></div>
+  <div class="icon-wrap">
+    <svg width="42" height="42" viewBox="0 0 42 42" fill="none">
+      <path d="M13 13L29 29M29 13L13 29" stroke="#E5383B" stroke-width="3.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <h1>Терминал не найден</h1>
+  <p>Терминал с идентификатором<br>
+     <span class="tid">{{ terminal_id }}</span><br>
+     <span style="display:block;margin-top:8px">не зарегистрирован в системе. Проверьте QR-код или обратитесь к кассиру.</span>
+  </p>
+  <div class="sber-logo">
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="11" fill="#21A038"/>
+      <path d="M6 11.5C6 8.462 8.462 6 11.5 6a5.47 5.47 0 013.88 1.607l1.39-1.39A7.47 7.47 0 0011.5 4C7.358 4 4 7.358 4 11.5S7.358 19 11.5 19c3.166 0 5.88-1.963 7.037-4.768H16.2A5.504 5.504 0 0111.5 17C8.462 17 6 14.538 6 11.5z" fill="white"/>
+    </svg>
+    <span>СберЭкран</span>
+  </div>
+</div>
 </body>
 </html>
         ''', terminal_id=terminal_id), 404
