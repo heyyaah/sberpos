@@ -196,6 +196,11 @@ class TerminalAPI:
         ok, r = self._post('/admin/confirm_face', {'terminal_id': self.terminal_id, 'approved': approved}, lambda: self.confirm_face(approved))
         return (True, "✅ Лицо подтверждено" if approved else "❌ Лицо отклонено") if ok else (False, f"❌ Ошибка: {getattr(r, 'status_code', r)}")
 
+    def confirm_qr(self, approved: bool):
+        if not self._ensure_auth(): return False, "❌ Ошибка авторизации"
+        ok, r = self._post('/api/qr/confirm', {'terminal_id': self.terminal_id, 'approved': approved}, lambda: self.confirm_qr(approved))
+        return (True, "✅ QR оплата подтверждена" if approved else "❌ QR оплата отменена") if ok else (False, f"❌ Ошибка: {getattr(r, 'status_code', r)}")
+
     def get_status(self):
         if not self._ensure_auth(): return False, "❌ Ошибка авторизации"
         try:
@@ -242,6 +247,7 @@ def kb_basic():
     kb.row(KeyboardButton("💸 Оплатить 100₽"), KeyboardButton("💸 Своя сумма"))
     kb.row(KeyboardButton("✅ Подтвердить карту"), KeyboardButton("❌ Отклонить карту"))
     kb.row(KeyboardButton("✅ Face подтвердить"), KeyboardButton("❌ Face отклонить"))
+    kb.row(KeyboardButton("✅ QR подтвердить"), KeyboardButton("❌ QR отменить"))
     kb.row(KeyboardButton("🚫 Отменить"), KeyboardButton("🔄 Выход в idle (все)"))
     kb.row(KeyboardButton("🔙 Назад"))
     return kb
@@ -632,6 +638,16 @@ def handle_all(message):
     elif text == "💳 Обход ВЫКЛ":
         msg = bot.send_message(chat_id, "🔄...")
         run_async(api.set_bypass_card_check, chat_id, msg.message_id, False)
+
+    elif text == "✅ QR подтвердить":
+        msg = bot.send_message(chat_id, "🔄 Подтверждение QR оплаты...")
+        run_async(api.confirm_qr, chat_id, msg.message_id, True,
+                  on_done=lambda ok, _: (send_status_after_delay(chat_id, api), auto_idle_after_confirm(chat_id, api)))
+
+    elif text == "❌ QR отменить":
+        msg = bot.send_message(chat_id, "🔄 Отмена QR оплаты...")
+        run_async(api.confirm_qr, chat_id, msg.message_id, False,
+                  on_done=lambda ok, _: send_status_after_delay(chat_id, api))
 
 # ── Entry point ───────────────────────────────────────────────────────────
 app = Flask(__name__)

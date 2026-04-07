@@ -127,6 +127,48 @@ def index():
     """Главная страница"""
     return render_template('index.html')
 
+@app.route('/api/confirm_qr', methods=['POST'])
+def confirm_qr():
+    """Подтверждение QR оплаты"""
+    try:
+        data = request.get_json()
+        terminal_id = data.get('terminal_id')
+        key = data.get('key')
+        
+        if not terminal_id or not key:
+            return jsonify({'success': False, 'error': 'Отсутствуют данные'}), 400
+        
+        # Проверяем терминал
+        response = requests.get(f'{API_URL}/api/terminal/check',
+                              params={'terminal_id': terminal_id},
+                              timeout=5)
+        
+        if response.status_code != 200:
+            return jsonify({'success': False, 'error': 'Терминал не найден'}), 404
+        
+        data = response.json()
+        
+        # Проверяем ключ
+        if key != data.get('qr_password', ''):
+            return jsonify({'success': False, 'error': 'Неверный ключ'}), 403
+        
+        # Подтверждаем оплату через API
+        confirm_response = requests.post(f'{API_URL}/api/qr/confirm',
+                                        json={'terminal_id': terminal_id, 'approved': True},
+                                        timeout=5)
+        
+        if confirm_response.status_code == 200:
+            return jsonify({'success': True, 'message': 'Оплата подтверждена'})
+        else:
+            return jsonify({'success': False, 'error': 'Ошибка подтверждения'}), 500
+            
+    except requests.RequestException as e:
+        print(f"❌ API Error: {e}")
+        return jsonify({'success': False, 'error': 'Ошибка соединения'}), 500
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка'}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5002))
     print(f"🌐 Website запущен на порту {port}")
