@@ -1779,6 +1779,395 @@ def admin_logout():
     return response
 
 
+# ===== СИСТЕМА УПРАВЛЕНИЯ КОМАНДОЙ SBERUNION =====
+
+team_users = {}
+team_sessions = {}
+team_tasks = []
+team_news = []
+team_shifts = {}
+
+TEAM_FILE = 'team_users.json'
+TASKS_FILE = 'team_tasks.json'
+NEWS_FILE = 'team_news.json'
+SHIFTS_FILE = 'team_shifts.json'
+
+def load_team_data():
+    global team_users, team_tasks, team_news, team_shifts
+    try:
+        with open(TEAM_FILE, 'r', encoding='utf-8') as f:
+            team_users = json.load(f)
+    except:
+        team_users = {'admin': {'password': 'admin123', 'role': 'owner', 'full_name': 'Администратор', 'created_at': datetime.now().isoformat()}}
+        save_team_users()
+    try:
+        with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+            team_tasks = json.load(f)
+    except:
+        team_tasks = []
+    try:
+        with open(NEWS_FILE, 'r', encoding='utf-8') as f:
+            team_news = json.load(f)
+    except:
+        team_news = [{'id': 1, 'title': 'Добро пожаловать в SberUnion!', 'content': 'Система управления командой запущена. Начните работу с открытия смены.', 'created_at': datetime.now().isoformat(), 'author': 'Система'}]
+        save_team_news()
+    try:
+        with open(SHIFTS_FILE, 'r', encoding='utf-8') as f:
+            team_shifts = json.load(f)
+    except:
+        team_shifts = {}
+
+def save_team_users():
+    with open(TEAM_FILE, 'w', encoding='utf-8') as f:
+        json.dump(team_users, f, ensure_ascii=False, indent=2)
+
+def save_team_tasks():
+    with open(TASKS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(team_tasks, f, ensure_ascii=False, indent=2)
+
+def save_team_news():
+    with open(NEWS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(team_news, f, ensure_ascii=False, indent=2)
+
+def save_team_shifts():
+    with open(SHIFTS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(team_shifts, f, ensure_ascii=False, indent=2)
+
+load_team_data()
+print(f"👥 Загружено пользователей: {len(team_users)}")
+print(f"📋 Загружено задач: {len(team_tasks)}")
+
+@app.route('/admin/login', methods=['GET', 'POST'])
+def team_login():
+    if request.method == 'GET':
+        error = request.args.get('error', '')
+        html = '''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>SberUnion - Вход</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:linear-gradient(135deg,#21d4fd 0%,#b721ff 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:#fff;border-radius:20px;padding:40px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)}h1{color:#333;margin-bottom:5px;font-size:28px}.subtitle{color:#666;margin-bottom:30px;font-size:14px}input{width:100%;padding:12px;border:2px solid #e0e0e0;border-radius:10px;margin:10px 0;font-size:14px}button{width:100%;padding:14px;background:linear-gradient(135deg,#21d4fd 0%,#b721ff 100%);color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-top:10px}button:hover{opacity:0.9}.error{background:#fee;color:#c33;padding:12px;border-radius:8px;margin-bottom:20px;font-size:14px}</style>
+</head><body><div class="card"><h1>🚀 SberUnion</h1><p class="subtitle">Система управления командой</p>'''
+        if error:
+            html += f'<div class="error">{error}</div>'
+        html += '''<form method="POST"><input type="text" name="username" placeholder="Логин" required><input type="password" name="password" placeholder="Пароль" required><button type="submit">Войти</button></form></div></body></html>'''
+        return html
+    
+    username = request.form.get('username')
+    password = request.form.get('password')
+    
+    if username in team_users and team_users[username]['password'] == password:
+        session_token = str(uuid.uuid4())
+        team_sessions[session_token] = {
+            'username': username,
+            'role': team_users[username]['role'],
+            'created_at': datetime.now().isoformat(),
+            'ip': request.remote_addr
+        }
+        response = make_response(redirect('/admin/dashboard'))
+        response.set_cookie('team_session', session_token, max_age=86400)
+        return response
+    return redirect('/admin/login?error=Неверный логин или пароль')
+
+@app.route('/admin/dashboard')
+def team_dashboard():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return redirect('/admin/login')
+    
+    session = team_sessions[session_token]
+    username = session['username']
+    role = session['role']
+    user = team_users[username]
+    
+    shift_opened = username in team_shifts and team_shifts[username].get('opened_at') and not team_shifts[username].get('closed_at')
+    
+    pending_tasks = [t for t in team_tasks if t['status'] == 'pending']
+    my_tasks = [t for t in team_tasks if t.get('assigned_to') == username and t['status'] in ['pending', 'in_progress']]
+    completed_tasks = [t for t in team_tasks if t['status'] == 'completed']
+    
+    recent_news = sorted(team_news, key=lambda x: x['created_at'], reverse=True)[:5]
+    
+    online_count = sum(1 for tid in terminals if tid in last_seen and (datetime.now() - last_seen[tid]).total_seconds() < 30)
+    offline_count = len(terminals) - online_count
+    
+    news_html = ''.join([f"<div class='news-item'><h4>{n['title']}</h4><p>{n['content']}</p><small>{n['created_at'][:16]} - {n['author']}</small></div>" for n in recent_news]) if recent_news else "<p style='color:#999'>Нет новостей</p>"
+    
+    pending_html = ''.join([f"<div class='task-item'><h4>{t['title']}</h4><p>{t['description']}</p><small>Создал: {t['created_by']} | {t['created_at'][:10]}</small><div class='task-actions'><button onclick='acceptTask({t['id']})'>Принять</button><button onclick='rejectTask({t['id']})' class='btn-reject'>Отклонить</button></div></div>" for t in pending_tasks]) if pending_tasks else "<p style='color:#999'>Нет новых задач</p>"
+    
+    my_html = ''.join([f"<div class='task-item'><h4>{t['title']}</h4><p>{t['description']}</p><small>Статус: {t['status']}</small><button onclick='completeTask({t['id']})'>Завершить</button></div>" for t in my_tasks]) if my_tasks else "<p style='color:#999'>Нет активных задач</p>"
+    
+    completed_html = ''.join([f"<div class='task-item completed'><h4>{t['title']}</h4><p>{t['description']}</p><small>Завершено: {t.get('completed_at', 'N/A')[:16]}</small></div>" for t in completed_tasks[-10:]]) if completed_tasks else "<p style='color:#999'>Нет завершённых задач</p>"
+    
+    role_features = ""
+    if role == 'owner':
+        role_features = '<div class="section"><h2>⚙️ Управление (Владелец)</h2><div class="btn-group"><button onclick="location.href=\'/admin/manage/users\'">👥 Пользователи</button><button onclick="location.href=\'/admin/manage/tasks\'">📋 Создать задачу</button><button onclick="location.href=\'/admin/manage/news\'">📰 Добавить новость</button><button onclick="location.href=\'/admin/terminals\'">🖥️ Терминалы</button></div></div>'
+    elif role == 'developer':
+        role_features = '<div class="section"><h2>🔧 Инструменты разработчика</h2><div class="btn-group"><button onclick="location.href=\'/admin/terminals\'">🖥️ Терминалы</button><button onclick="location.href=\'/admin/logs\'">📜 Логи</button></div></div>'
+    elif role == 'tester':
+        role_features = '<div class="section"><h2>🧪 Инструменты тестировщика</h2><div class="btn-group"><button onclick="location.href=\'/admin/terminals\'">🖥️ Тестирование</button><button onclick="location.href=\'/admin/bugs\'">🐛 Отчёты</button></div></div>'
+    
+    shift_btn = f"<button onclick='openShift()' class='shift-btn'>Открыть смену</button>" if not shift_opened else f"<button onclick='closeShift()' class='shift-btn shift-close'>Закрыть смену</button>"
+
+    
+    html = f'''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>SberUnion - Панель управления</title>
+<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}.header{{background:linear-gradient(135deg,#21d4fd 0%,#b721ff 100%);color:#fff;padding:30px;border-radius:15px;margin-bottom:20px;box-shadow:0 4px 15px rgba(0,0,0,0.1)}}h1{{font-size:32px;margin-bottom:5px}}.subtitle{{opacity:0.9;font-size:14px}}.user-info{{float:right;text-align:right}}.user-info strong{{display:block;font-size:18px}}.user-info small{{opacity:0.8}}.stats{{display:flex;gap:20px;margin-bottom:20px}}.stat{{background:#fff;padding:20px;border-radius:10px;flex:1;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,0.05)}}.stat h3{{font-size:28px;color:#21d4fd;margin-bottom:5px}}.stat p{{color:#666;font-size:14px}}.section{{background:#fff;padding:25px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}}h2{{color:#333;margin-bottom:20px;font-size:20px}}.news-item,.task-item{{background:#f9f9f9;padding:15px;border-radius:8px;margin-bottom:15px;border-left:4px solid #21d4fd}}.task-item.completed{{border-left-color:#27ae60;opacity:0.7}}.news-item h4,.task-item h4{{color:#333;margin-bottom:8px;font-size:16px}}.news-item p,.task-item p{{color:#666;font-size:14px;margin-bottom:8px}}.news-item small,.task-item small{{color:#999;font-size:12px}}button{{padding:10px 20px;background:linear-gradient(135deg,#21d4fd 0%,#b721ff 100%);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;margin-right:10px}}button:hover{{opacity:0.9}}.btn-reject{{background:#e74c3c}}.shift-btn{{width:100%;padding:15px;font-size:16px;margin-bottom:20px}}.shift-close{{background:#e74c3c}}.task-actions{{margin-top:10px}}.logout{{background:#e74c3c;padding:8px 16px;border-radius:5px;color:#fff;text-decoration:none;font-size:14px;margin-left:15px}}.btn-group{{display:flex;gap:10px;flex-wrap:wrap}}.btn-group button{{flex:1;min-width:150px}}</style>
+<script>
+function openShift(){{fetch('/admin/shift/open',{{method:'POST'}}).then(r=>r.json()).then(d=>{{if(d.success)location.reload()}})}}
+function closeShift(){{fetch('/admin/shift/close',{{method:'POST'}}).then(r=>r.json()).then(d=>{{if(d.success)location.reload()}})}}
+function acceptTask(id){{fetch('/admin/task/accept',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{task_id:id}})}}).then(r=>r.json()).then(d=>{{if(d.success)location.reload()}})}}
+function rejectTask(id){{let reason=prompt('Причина отклонения:');if(reason)fetch('/admin/task/reject',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{task_id:id,reason:reason}})}}).then(r=>r.json()).then(d=>{{if(d.success)location.reload()}})}}
+function completeTask(id){{fetch('/admin/task/complete',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{task_id:id}})}}).then(r=>r.json()).then(d=>{{if(d.success)location.reload()}})}}
+</script>
+</head><body>
+<div class="header"><div class="user-info"><strong>{user['full_name']}</strong><small>Роль: {role}</small><br><a href="/admin/logout" class="logout">Выйти</a></div><h1>🚀 Приветствуем в SberUnion команде!</h1><p class="subtitle">Система управления терминалами и задачами</p></div>
+<div class="stats"><div class="stat"><h3>{online_count}</h3><p>Терминалов онлайн</p></div><div class="stat"><h3>{offline_count}</h3><p>Терминалов оффлайн</p></div><div class="stat"><h3>{len(pending_tasks)}</h3><p>Новых задач</p></div></div>
+{shift_btn}
+<div class="section"><h2>📰 Новости</h2>{news_html}</div>
+<div class="section"><h2>📋 Новые задачи</h2>{pending_html}</div>
+<div class="section"><h2>✅ Мои задачи</h2>{my_html}</div>
+<div class="section"><h2>🎉 Завершённые задачи</h2>{completed_html}</div>
+{role_features}
+</body></html>'''
+    return html
+
+@app.route('/admin/shift/open', methods=['POST'])
+def team_shift_open():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return jsonify({'error': 'Unauthorized'}), 401
+    username = team_sessions[session_token]['username']
+    team_shifts[username] = {'opened_at': datetime.now().isoformat(), 'closed_at': None}
+    save_team_shifts()
+    return jsonify({'success': True})
+
+@app.route('/admin/shift/close', methods=['POST'])
+def team_shift_close():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return jsonify({'error': 'Unauthorized'}), 401
+    username = team_sessions[session_token]['username']
+    if username in team_shifts:
+        team_shifts[username]['closed_at'] = datetime.now().isoformat()
+        save_team_shifts()
+    return jsonify({'success': True})
+
+@app.route('/admin/task/accept', methods=['POST'])
+def team_task_accept():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return jsonify({'error': 'Unauthorized'}), 401
+    username = team_sessions[session_token]['username']
+    data = request.json
+    task_id = data.get('task_id')
+    for task in team_tasks:
+        if task['id'] == task_id:
+            task['status'] = 'in_progress'
+            task['assigned_to'] = username
+            save_team_tasks()
+            return jsonify({'success': True})
+    return jsonify({'error': 'Task not found'}), 404
+
+@app.route('/admin/task/reject', methods=['POST'])
+def team_task_reject():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.json
+    task_id = data.get('task_id')
+    reason = data.get('reason')
+    for task in team_tasks:
+        if task['id'] == task_id:
+            task['status'] = 'rejected'
+            task['reject_reason'] = reason
+            save_team_tasks()
+            return jsonify({'success': True})
+    return jsonify({'error': 'Task not found'}), 404
+
+@app.route('/admin/task/complete', methods=['POST'])
+def team_task_complete():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.json
+    task_id = data.get('task_id')
+    for task in team_tasks:
+        if task['id'] == task_id:
+            task['status'] = 'completed'
+            task['completed_at'] = datetime.now().isoformat()
+            save_team_tasks()
+            return jsonify({'success': True})
+    return jsonify({'error': 'Task not found'}), 404
+
+@app.route('/admin/terminals')
+def team_terminals():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return redirect('/admin/login')
+    
+    online_terminals = []
+    offline_terminals = []
+    
+    for terminal_id, terminal in terminals.items():
+        if terminal_id in last_seen:
+            last_seen_dt = last_seen[terminal_id]
+            if (datetime.now() - last_seen_dt).total_seconds() < 30:
+                online_terminals.append({
+                    'id': terminal_id,
+                    'state': terminal.get('current_payload', {}).get('state', 'idle'),
+                    'last_seen': last_seen_dt.strftime('%H:%M:%S'),
+                    'uuid': terminal.get('uuid', 'N/A'),
+                    'qr_password': terminal.get('qr_password', 'N/A')
+                })
+            else:
+                offline_terminals.append({'id': terminal_id, 'last_seen': last_seen_dt.strftime('%Y-%m-%d %H:%M:%S')})
+    
+    online_rows = ''.join([f"<tr><td>{t['id']}</td><td><span class='status-{t['state']}'>{t['state']}</span></td><td>{t['uuid']}</td><td>{t['qr_password']}</td><td>{t['last_seen']}</td></tr>" for t in online_terminals])
+    offline_rows = ''.join([f"<tr><td>{t['id']}</td><td>{t['last_seen']}</td></tr>" for t in offline_terminals])
+    
+    html = f'''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="5"><title>Мониторинг терминалов</title>
+<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}.header{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}}h1{{color:#333}}.stats{{display:flex;gap:20px;margin:20px 0}}.stat{{background:linear-gradient(135deg,#21d4fd 0%,#b721ff 100%);color:#fff;padding:20px;border-radius:10px;flex:1;text-align:center}}.stat h2{{font-size:32px;margin-bottom:5px}}.stat p{{font-size:14px;opacity:0.9}}.section{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}}h2{{color:#333;margin-bottom:15px}}table{{width:100%;border-collapse:collapse}}th,td{{padding:12px;text-align:left;border-bottom:1px solid #e0e0e0}}th{{background:#f8f8f8;font-weight:600;color:#666}}tr:hover{{background:#f9f9f9}}button{{padding:10px 20px;background:#21d4fd;color:#fff;border:none;border-radius:5px;cursor:pointer;text-decoration:none;display:inline-block;font-size:14px}}button:hover{{opacity:0.9}}.status-idle{{color:#999}}.status-pay{{color:#f39c12;font-weight:600}}.status-success{{color:#27ae60;font-weight:600}}.status-error{{color:#e74c3c;font-weight:600}}</style>
+</head><body><div class="header"><h1>🖥️ Мониторинг терминалов</h1><button onclick="location.href='/admin/dashboard'">← Назад</button></div>
+<div class="stats"><div class="stat"><h2>{len(online_terminals)}</h2><p>Онлайн</p></div><div class="stat"><h2>{len(offline_terminals)}</h2><p>Оффлайн</p></div><div class="stat"><h2>{len(terminals)}</h2><p>Всего</p></div></div>
+<div class="section"><h2>✅ Онлайн терминалы</h2><table><tr><th>ID</th><th>Состояние</th><th>UUID</th><th>QR пароль</th><th>Последняя активность</th></tr>{online_rows if online_rows else "<tr><td colspan='5' style='text-align:center;color:#999'>Нет онлайн терминалов</td></tr>"}</table></div>
+<div class="section"><h2>❌ Оффлайн терминалы</h2><table><tr><th>ID</th><th>Последняя активность</th></tr>{offline_rows if offline_rows else "<tr><td colspan='2' style='text-align:center;color:#999'>Нет оффлайн терминалов</td></tr>"}</table></div>
+</body></html>'''
+    return html
+
+@app.route('/admin/manage/users', methods=['GET', 'POST'])
+def manage_users():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return redirect('/admin/login')
+    if team_sessions[session_token]['role'] != 'owner':
+        return "Access denied", 403
+    
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        role = request.form.get('role')
+        full_name = request.form.get('full_name')
+        
+        team_users[username] = {
+            'password': password,
+            'role': role,
+            'full_name': full_name,
+            'created_at': datetime.now().isoformat()
+        }
+        save_team_users()
+        return redirect('/admin/manage/users?success=1')
+    
+    users_rows = ''.join([f"<tr><td>{u}</td><td>{team_users[u]['full_name']}</td><td>{team_users[u]['role']}</td><td>{team_users[u]['created_at'][:10]}</td></tr>" for u in team_users])
+    
+    html = f'''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Управление пользователями</title>
+<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}.header{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}}h1{{color:#333}}.section{{background:#fff;padding:25px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}}h2{{color:#333;margin-bottom:20px}}table{{width:100%;border-collapse:collapse}}th,td{{padding:12px;text-align:left;border-bottom:1px solid #e0e0e0}}th{{background:#f8f8f8;font-weight:600;color:#666}}tr:hover{{background:#f9f9f9}}input,select{{width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:5px;margin:5px 0;font-size:14px}}button{{padding:10px 20px;background:#21d4fd;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px;margin-top:10px}}button:hover{{opacity:0.9}}.form-group{{margin-bottom:15px}}label{{display:block;color:#666;margin-bottom:5px;font-weight:600}}.success{{background:#d4edda;color:#155724;padding:12px;border-radius:5px;margin-bottom:20px}}</style>
+</head><body><div class="header"><h1>👥 Управление пользователями</h1><button onclick="location.href='/admin/dashboard'">← Назад</button></div>
+{"<div class='success'>Пользователь успешно добавлен!</div>" if request.args.get('success') else ""}
+<div class="section"><h2>Добавить пользователя</h2>
+<form method="POST">
+<div class="form-group"><label>Логин:</label><input type="text" name="username" required></div>
+<div class="form-group"><label>Пароль:</label><input type="password" name="password" required></div>
+<div class="form-group"><label>Полное имя:</label><input type="text" name="full_name" required></div>
+<div class="form-group"><label>Роль:</label><select name="role" required>
+<option value="developer">Разработчик</option>
+<option value="tester">Тестировщик</option>
+<option value="owner">Владелец</option>
+</select></div>
+<button type="submit">Добавить пользователя</button>
+</form></div>
+<div class="section"><h2>Список пользователей</h2>
+<table><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Создан</th></tr>{users_rows}</table></div>
+</body></html>'''
+    return html
+
+@app.route('/admin/manage/tasks', methods=['GET', 'POST'])
+def manage_tasks():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return redirect('/admin/login')
+    if team_sessions[session_token]['role'] != 'owner':
+        return "Access denied", 403
+    
+    if request.method == 'POST':
+        title = request.form.get('title')
+        description = request.form.get('description')
+        
+        new_id = max([t['id'] for t in team_tasks], default=0) + 1
+        team_tasks.append({
+            'id': new_id,
+            'title': title,
+            'description': description,
+            'created_by': team_sessions[session_token]['username'],
+            'created_at': datetime.now().isoformat(),
+            'status': 'pending',
+            'assigned_to': None
+        })
+        save_team_tasks()
+        return redirect('/admin/manage/tasks?success=1')
+    
+    html = f'''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Управление задачами</title>
+<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}.header{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}}h1{{color:#333}}.section{{background:#fff;padding:25px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}}h2{{color:#333;margin-bottom:20px}}input,textarea{{width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:5px;margin:5px 0;font-size:14px;font-family:Arial,sans-serif}}textarea{{min-height:100px}}button{{padding:10px 20px;background:#21d4fd;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px;margin-top:10px}}button:hover{{opacity:0.9}}.form-group{{margin-bottom:15px}}label{{display:block;color:#666;margin-bottom:5px;font-weight:600}}.success{{background:#d4edda;color:#155724;padding:12px;border-radius:5px;margin-bottom:20px}}</style>
+</head><body><div class="header"><h1>📋 Управление задачами</h1><button onclick="location.href='/admin/dashboard'">← Назад</button></div>
+{"<div class='success'>Задача успешно создана!</div>" if request.args.get('success') else ""}
+<div class="section"><h2>Создать новую задачу</h2>
+<form method="POST">
+<div class="form-group"><label>Название:</label><input type="text" name="title" required></div>
+<div class="form-group"><label>Описание:</label><textarea name="description" required></textarea></div>
+<button type="submit">Создать задачу</button>
+</form></div>
+</body></html>'''
+    return html
+
+@app.route('/admin/manage/news', methods=['GET', 'POST'])
+def manage_news():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return redirect('/admin/login')
+    if team_sessions[session_token]['role'] != 'owner':
+        return "Access denied", 403
+    
+    if request.method == 'POST':
+        title = request.form.get('title')
+        content = request.form.get('content')
+        
+        new_id = max([n['id'] for n in team_news], default=0) + 1
+        team_news.append({
+            'id': new_id,
+            'title': title,
+            'content': content,
+            'created_at': datetime.now().isoformat(),
+            'author': team_sessions[session_token]['username']
+        })
+        save_team_news()
+        return redirect('/admin/manage/news?success=1')
+    
+    html = f'''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Управление новостями</title>
+<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}.header{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}}h1{{color:#333}}.section{{background:#fff;padding:25px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}}h2{{color:#333;margin-bottom:20px}}input,textarea{{width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:5px;margin:5px 0;font-size:14px;font-family:Arial,sans-serif}}textarea{{min-height:100px}}button{{padding:10px 20px;background:#21d4fd;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px;margin-top:10px}}button:hover{{opacity:0.9}}.form-group{{margin-bottom:15px}}label{{display:block;color:#666;margin-bottom:5px;font-weight:600}}.success{{background:#d4edda;color:#155724;padding:12px;border-radius:5px;margin-bottom:20px}}</style>
+</head><body><div class="header"><h1>📰 Управление новостями</h1><button onclick="location.href='/admin/dashboard'">← Назад</button></div>
+{"<div class='success'>Новость успешно добавлена!</div>" if request.args.get('success') else ""}
+<div class="section"><h2>Добавить новость</h2>
+<form method="POST">
+<div class="form-group"><label>Заголовок:</label><input type="text" name="title" required></div>
+<div class="form-group"><label>Содержание:</label><textarea name="content" required></textarea></div>
+<button type="submit">Опубликовать новость</button>
+</form></div>
+</body></html>'''
+    return html
+
+@app.route('/admin/logout')
+def team_logout():
+    session_token = request.cookies.get('team_session')
+    if session_token and session_token in team_sessions:
+        del team_sessions[session_token]
+    response = make_response(redirect('/admin/login'))
+    response.set_cookie('team_session', '', max_age=0)
+    return response
+
+@app.route('/admin/loginuser', methods=['GET', 'POST'])
+def admin_login_old():
+    return redirect('/admin/login')
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     print(f"🚀 API Server запущен на порту {port}")
