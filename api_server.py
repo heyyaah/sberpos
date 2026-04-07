@@ -1631,6 +1631,7 @@ def index():
             'GET /api/qr/status - Get QR payment status',
             'POST /api/qr/initiate - Initiate QR payment',
             'GET /api/qr/check - Check QR payment status (web)',
+            'GET /api/terminal/check - Public terminal check (no auth)',
             'GET /p/<terminal_id> - QR payment page',
             'POST /admin/set_device_payload',
             'POST /admin/reset',
@@ -1642,6 +1643,33 @@ def index():
             'GET /admin/status'
         ],
         'terminals_count': len(terminals)
+    }), 200
+
+@app.route('/api/terminal/check', methods=['GET'])
+def check_terminal_public():
+    """Публичная проверка терминала без авторизации (для веб-сайта)"""
+    terminal_id = request.args.get('terminal_id')
+    
+    if not terminal_id:
+        return jsonify({'error': 'Missing terminal_id'}), 400
+    
+    if terminal_id not in terminals:
+        return jsonify({'error': 'Terminal not found', 'exists': False}), 404
+    
+    terminal = terminals[terminal_id]
+    current = terminal.get('current_payload', {})
+    state = current.get('state', 'idle')
+    amount = current.get('data', {}).get('amount', '0')
+    qr_password = terminal.get('qr_password', '')
+    
+    return jsonify({
+        'success': True,
+        'exists': True,
+        'terminal_id': terminal_id,
+        'state': state,
+        'amount': amount,
+        'qr_password': qr_password,
+        'in_payment': state in ['pay', 'payPending']
     }), 200
 
 @app.route('/api/qr/generate', methods=['GET'])
