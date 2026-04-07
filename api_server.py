@@ -1712,14 +1712,16 @@ team_sessions = {}
 team_tasks = []
 team_news = []
 team_shifts = {}
+team_bugs = []
 
 TEAM_FILE = 'team_users.json'
 TASKS_FILE = 'team_tasks.json'
 NEWS_FILE = 'team_news.json'
 SHIFTS_FILE = 'team_shifts.json'
+BUGS_FILE = 'team_bugs.json'
 
 def load_team_data():
-    global team_users, team_tasks, team_news, team_shifts
+    global team_users, team_tasks, team_news, team_shifts, team_bugs
     try:
         with open(TEAM_FILE, 'r', encoding='utf-8') as f:
             team_users = json.load(f)
@@ -1742,6 +1744,11 @@ def load_team_data():
             team_shifts = json.load(f)
     except:
         team_shifts = {}
+    try:
+        with open(BUGS_FILE, 'r', encoding='utf-8') as f:
+            team_bugs = json.load(f)
+    except:
+        team_bugs = []
 
 def save_team_users():
     with open(TEAM_FILE, 'w', encoding='utf-8') as f:
@@ -1758,6 +1765,10 @@ def save_team_news():
 def save_team_shifts():
     with open(SHIFTS_FILE, 'w', encoding='utf-8') as f:
         json.dump(team_shifts, f, ensure_ascii=False, indent=2)
+
+def save_team_bugs():
+    with open(BUGS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(team_bugs, f, ensure_ascii=False, indent=2)
 
 load_team_data()
 print(f"👥 Загружено пользователей: {len(team_users)}")
@@ -2153,14 +2164,366 @@ def admin_bugs():
     if not session_token or session_token not in team_sessions:
         return redirect('/admin/login')
     
-    html = '''<!DOCTYPE html>
+    session = team_sessions[session_token]
+    username = session['username']
+    role = session['role']
+    
+    # Фильтруем баги по статусу
+    open_bugs = [b for b in team_bugs if b['status'] == 'open']
+    in_progress_bugs = [b for b in team_bugs if b['status'] == 'in_progress']
+    resolved_bugs = [b for b in team_bugs if b['status'] == 'resolved']
+    cancelled_bugs = [b for b in team_bugs if b['status'] == 'cancelled']
+    
+    # Генерируем HTML для списка багов
+    def render_bug_item(bug):
+        severity_colors = {
+            'critical': '#e74c3c',
+            'medium': '#f39c12',
+            'minor': '#3498db'
+        }
+        severity_labels = {
+            'critical': '🔴 Критичный',
+            'medium': '🟡 Средний',
+            'minor': '🔵 Мелкий'
+        }
+        
+        color = severity_colors.get(bug['severity'], '#999')
+        label = severity_labels.get(bug['severity'], bug['severity'])
+        
+        actions = ''
+        if bug['status'] == 'open' and role in ['owner', 'developer']:
+            actions = f'''
+                <button onclick="takeBug({bug['id']})" class="btn-take">Взять в работу</button>
+                <button onclick="cancelBug({bug['id']})" class="btn-cancel">Отменить</button>
+            '''
+        elif bug['status'] == 'in_progress' and role in ['owner', 'developer']:
+            actions = f'''
+                <button onclick="resolveBug({bug['id']})" class="btn-resolve">Решить</button>
+                <button onclick="cancelBug({bug['id']})" class="btn-cancel">Отменить</button>
+            '''
+        
+        assigned_info = f"<p><strong>Исполнитель:</strong> {bug.get('assigned_to', 'Не назначен')}</p>" if bug.get('assigned_to') else ''
+        cancel_reason = f"<p><strong>Причина отмены:</strong> {bug.get('cancel_reason', '')}</p>" if bug.get('cancel_reason') else ''
+        
+        return f'''
+            <div class="bug-item" style="border-left: 4px solid {color}">
+                <div class="bug-header">
+                    <span class="bug-severity" style="color: {color}">{label}</span>
+                    <span class="bug-id">#{bug['id']}</span>
+                </div>
+                <p class="bug-description">{bug['description']}</p>
+                <div class="bug-meta">
+                    <small>Создал: {bug['created_by']} | {bug['created_at'][:16]}</small>
+                    {assigned_info}
+                    {cancel_reason}
+                </div>
+                <div class="bug-actions">{actions}</div>
+            </div>
+        '''
+    
+    open_html = ''.join([render_bug_item(b) for b in open_bugs]) if open_bugs else "<p class='empty'>Нет открытых багов</p>"
+    in_progress_html = ''.join([render_bug_item(b) for b in in_progress_bugs]) if in_progress_bugs else "<p class='empty'>Нет багов в работе</p>"
+    resolved_html = ''.join([render_bug_item(b) for b in resolved_bugs]) if resolved_bugs else "<p class='empty'>Нет решённых багов</p>"
+    cancelled_html = ''.join([render_bug_item(b) for b in cancelled_bugs]) if cancelled_bugs else "<p class='empty'>Нет отменённых багов</p>"
+    
+    html = f'''<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Отчёты о багах</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}.header{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}h1{color:#333}.section{background:#fff;padding:25px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}h2{color:#333;margin-bottom:20px}button{padding:10px 20px;background:#21d4fd;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px}button:hover{opacity:0.9}p{color:#666;text-align:center;padding:40px}</style>
-</head><body><div class="header"><h1>🐛 Отчёты о багах</h1><button onclick="location.href='/admin/dashboard'">← Назад</button></div>
-<div class="section"><h2>Список багов</h2>
-<p>Функция в разработке. Здесь будут отображаться отчёты о найденных багах.</p></div>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}
+.header{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}}
+h1{{color:#333}}
+.section{{background:#fff;padding:25px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}}
+h2{{color:#333;margin-bottom:20px;font-size:18px}}
+button{{padding:10px 20px;background:#21d4fd;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px;margin-right:10px}}
+button:hover{{opacity:0.9}}
+.btn-report{{background:linear-gradient(135deg,#e74c3c 0%,#c0392b 100%);font-weight:600}}
+.btn-take{{background:#3498db}}
+.btn-resolve{{background:#27ae60}}
+.btn-cancel{{background:#e74c3c}}
+.bug-item{{background:#f9f9f9;padding:15px;border-radius:8px;margin-bottom:15px}}
+.bug-header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}}
+.bug-severity{{font-weight:600;font-size:14px}}
+.bug-id{{color:#999;font-size:12px}}
+.bug-description{{color:#333;margin-bottom:10px;line-height:1.5}}
+.bug-meta{{color:#666;font-size:13px;margin-bottom:10px}}
+.bug-meta p{{margin:5px 0}}
+.bug-actions{{margin-top:10px}}
+.empty{{color:#999;text-align:center;padding:20px}}
+.modal{{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center}}
+.modal.active{{display:flex}}
+.modal-content{{background:#fff;padding:30px;border-radius:15px;max-width:500px;width:90%}}
+.modal-content h2{{margin-bottom:20px}}
+.form-group{{margin-bottom:20px}}
+.form-group label{{display:block;margin-bottom:8px;color:#333;font-weight:600}}
+.form-group select,.form-group textarea{{width:100%;padding:12px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;font-family:Arial,sans-serif}}
+.form-group textarea{{min-height:120px;resize:vertical}}
+.modal-buttons{{display:flex;gap:10px}}
+.modal-buttons button{{flex:1}}
+.stats{{display:flex;gap:15px;margin-bottom:20px}}
+.stat{{background:#fff;padding:15px;border-radius:8px;flex:1;text-align:center;box-shadow:0 2px 5px rgba(0,0,0,0.05)}}
+.stat h3{{font-size:24px;margin-bottom:5px}}
+.stat.critical h3{{color:#e74c3c}}
+.stat.medium h3{{color:#f39c12}}
+.stat.minor h3{{color:#3498db}}
+.stat p{{color:#666;font-size:13px}}
+</style>
+<script>
+function showReportModal() {{
+    document.getElementById('reportModal').classList.add('active');
+}}
+function hideReportModal() {{
+    document.getElementById('reportModal').classList.remove('active');
+}}
+function submitBug() {{
+    const severity = document.getElementById('severity').value;
+    const description = document.getElementById('description').value;
+    
+    if (!description.trim()) {{
+        alert('Пожалуйста, опишите баг');
+        return;
+    }}
+    
+    fetch('/admin/bugs/report', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{severity, description}})
+    }})
+    .then(r => r.json())
+    .then(d => {{
+        if (d.success) {{
+            location.reload();
+        }} else {{
+            alert('Ошибка: ' + (d.error || 'Неизвестная ошибка'));
+        }}
+    }});
+}}
+function takeBug(id) {{
+    fetch('/admin/bugs/take', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{bug_id: id}})
+    }})
+    .then(r => r.json())
+    .then(d => {{
+        if (d.success) location.reload();
+        else alert('Ошибка: ' + (d.error || 'Неизвестная ошибка'));
+    }});
+}}
+function resolveBug(id) {{
+    fetch('/admin/bugs/resolve', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{bug_id: id}})
+    }})
+    .then(r => r.json())
+    .then(d => {{
+        if (d.success) location.reload();
+        else alert('Ошибка: ' + (d.error || 'Неизвестная ошибка'));
+    }});
+}}
+function cancelBug(id) {{
+    const reason = prompt('Укажите причину отмены:');
+    if (!reason) return;
+    
+    fetch('/admin/bugs/cancel', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{bug_id: id, reason}})
+    }})
+    .then(r => r.json())
+    .then(d => {{
+        if (d.success) location.reload();
+        else alert('Ошибка: ' + (d.error || 'Неизвестная ошибка'));
+    }});
+}}
+</script>
+</head><body>
+<div class="header">
+    <h1>🐛 Отчёты о багах</h1>
+    <div>
+        <button onclick="showReportModal()" class="btn-report">+ Заявить о баге</button>
+        <button onclick="location.href='/admin/dashboard'">← Назад</button>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stat critical">
+        <h3>{len([b for b in team_bugs if b['severity'] == 'critical' and b['status'] in ['open', 'in_progress']])}</h3>
+        <p>Критичных</p>
+    </div>
+    <div class="stat medium">
+        <h3>{len([b for b in team_bugs if b['severity'] == 'medium' and b['status'] in ['open', 'in_progress']])}</h3>
+        <p>Средних</p>
+    </div>
+    <div class="stat minor">
+        <h3>{len([b for b in team_bugs if b['severity'] == 'minor' and b['status'] in ['open', 'in_progress']])}</h3>
+        <p>Мелких</p>
+    </div>
+</div>
+
+<div class="section">
+    <h2>📋 Открытые баги</h2>
+    {open_html}
+</div>
+
+<div class="section">
+    <h2>🔧 В работе</h2>
+    {in_progress_html}
+</div>
+
+<div class="section">
+    <h2>✅ Решённые</h2>
+    {resolved_html}
+</div>
+
+<div class="section">
+    <h2>❌ Отменённые</h2>
+    {cancelled_html}
+</div>
+
+<div id="reportModal" class="modal">
+    <div class="modal-content">
+        <h2>🐛 Заявить о баге</h2>
+        <div class="form-group">
+            <label>Критичность:</label>
+            <select id="severity">
+                <option value="critical">🔴 Критичный</option>
+                <option value="medium" selected>🟡 Средний</option>
+                <option value="minor">🔵 Мелкий</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Опишите баг:</label>
+            <textarea id="description" placeholder="Подробно опишите проблему..."></textarea>
+        </div>
+        <div class="modal-buttons">
+            <button onclick="submitBug()">Отправить</button>
+            <button onclick="hideReportModal()" style="background:#95a5a6">Отменить</button>
+        </div>
+    </div>
+</div>
+
 </body></html>'''
     return html
+
+@app.route('/admin/bugs/report', methods=['POST'])
+def report_bug():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    session = team_sessions[session_token]
+    username = session['username']
+    
+    data = request.json
+    severity = data.get('severity', 'medium')
+    description = data.get('description', '').strip()
+    
+    if not description:
+        return jsonify({'error': 'Description is required', 'success': False}), 400
+    
+    # Генерируем ID
+    bug_id = max([b['id'] for b in team_bugs], default=0) + 1
+    
+    bug = {
+        'id': bug_id,
+        'severity': severity,
+        'description': description,
+        'status': 'open',
+        'created_by': username,
+        'created_at': datetime.now().isoformat(),
+        'assigned_to': None,
+        'resolved_at': None,
+        'cancel_reason': None
+    }
+    
+    team_bugs.append(bug)
+    save_team_bugs()
+    
+    print(f"🐛 [BUG REPORT] #{bug_id} by {username}: {severity} - {description[:50]}")
+    
+    return jsonify({'success': True, 'bug_id': bug_id}), 200
+
+@app.route('/admin/bugs/take', methods=['POST'])
+def take_bug():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    session = team_sessions[session_token]
+    username = session['username']
+    role = session['role']
+    
+    if role not in ['owner', 'developer']:
+        return jsonify({'error': 'Access denied', 'success': False}), 403
+    
+    data = request.json
+    bug_id = data.get('bug_id')
+    
+    for bug in team_bugs:
+        if bug['id'] == bug_id:
+            bug['status'] = 'in_progress'
+            bug['assigned_to'] = username
+            save_team_bugs()
+            print(f"🐛 [BUG TAKE] #{bug_id} taken by {username}")
+            return jsonify({'success': True}), 200
+    
+    return jsonify({'error': 'Bug not found', 'success': False}), 404
+
+@app.route('/admin/bugs/resolve', methods=['POST'])
+def resolve_bug():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    session = team_sessions[session_token]
+    role = session['role']
+    
+    if role not in ['owner', 'developer']:
+        return jsonify({'error': 'Access denied', 'success': False}), 403
+    
+    data = request.json
+    bug_id = data.get('bug_id')
+    
+    for bug in team_bugs:
+        if bug['id'] == bug_id:
+            bug['status'] = 'resolved'
+            bug['resolved_at'] = datetime.now().isoformat()
+            save_team_bugs()
+            print(f"🐛 [BUG RESOLVE] #{bug_id} resolved")
+            return jsonify({'success': True}), 200
+    
+    return jsonify({'error': 'Bug not found', 'success': False}), 404
+
+@app.route('/admin/bugs/cancel', methods=['POST'])
+def cancel_bug():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    session = team_sessions[session_token]
+    role = session['role']
+    
+    if role not in ['owner', 'developer']:
+        return jsonify({'error': 'Access denied', 'success': False}), 403
+    
+    data = request.json
+    bug_id = data.get('bug_id')
+    reason = data.get('reason', '').strip()
+    
+    if not reason:
+        return jsonify({'error': 'Reason is required', 'success': False}), 400
+    
+    for bug in team_bugs:
+        if bug['id'] == bug_id:
+            bug['status'] = 'cancelled'
+            bug['cancel_reason'] = reason
+            save_team_bugs()
+            print(f"🐛 [BUG CANCEL] #{bug_id} cancelled: {reason}")
+            return jsonify({'success': True}), 200
+    
+    return jsonify({'error': 'Bug not found', 'success': False}), 404
 
 @app.route('/admin/logout')
 def team_logout():
