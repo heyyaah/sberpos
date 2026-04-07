@@ -3183,30 +3183,44 @@ def cabinet_page():
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         :root {
-            --bg-gradient-start: #667eea;
-            --bg-gradient-end: #764ba2;
-            --card-bg: rgba(255, 255, 255, 0.95);
-            --text-primary: #333;
-            --text-secondary: #666;
-            --border-color: #e0e0e0;
-            --input-bg: white;
-            --input-border: #e0e0e0;
+            color-scheme: light;
+            --bg-primary: #eff2ff;
+            --bg-gradient-start: #edf0ff;
+            --bg-gradient-end: #e8f0fb;
+            --card-bg: rgba(255, 255, 255, 0.96);
+            --card-bg-alt: rgba(245, 247, 255, 0.94);
+            --text-primary: #222;
+            --text-secondary: #5f6d98;
+            --text-tertiary: #3c4a84;
+            --border-color: rgba(81, 97, 163, 0.18);
+            --input-bg: #fafbff;
+            --input-border: rgba(81, 97, 163, 0.18);
+            --input-focus: #5c6bff;
             --stat-box-bg: rgba(102, 126, 234, 0.1);
             --stat-box-border: rgba(102, 126, 234, 0.2);
-            --terminal-card-bg: rgba(102, 126, 234, 0.05);
+            --terminal-card-bg: #f3f5ff;
             --transaction-success-bg: rgba(40, 167, 69, 0.1);
             --transaction-failed-bg: rgba(220, 53, 69, 0.1);
+            --primary-gradient: linear-gradient(135deg, #5a5fff, #6f70ff);
+            --success-gradient: linear-gradient(135deg, #28a745, #20c997);
+            --danger-gradient: linear-gradient(135deg, #dc3545, #c82333);
+            --brand-gradient: linear-gradient(135deg, #4f5cff, #8b65ff);
         }
         
         [data-theme="dark"] {
+            color-scheme: dark;
+            --bg-primary: #1a1a2e;
             --bg-gradient-start: #1a1a2e;
             --bg-gradient-end: #16213e;
             --card-bg: rgba(30, 30, 46, 0.95);
+            --card-bg-alt: rgba(25, 25, 40, 0.94);
             --text-primary: #e0e0e0;
             --text-secondary: #b0b0b0;
+            --text-tertiary: #9a9ab0;
             --border-color: #3a3a4a;
             --input-bg: #2a2a3a;
             --input-border: #3a3a4a;
+            --input-focus: #7c8cff;
             --stat-box-bg: rgba(102, 126, 234, 0.2);
             --stat-box-border: rgba(102, 126, 234, 0.3);
             --terminal-card-bg: rgba(102, 126, 234, 0.15);
@@ -3214,186 +3228,254 @@ def cabinet_page():
             --transaction-failed-bg: rgba(220, 53, 69, 0.2);
         }
         
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
-            min-height: 100vh;
-            padding-bottom: 150px; /* Отступ для баннера */
-            transition: background 0.3s ease;
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
         }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(180deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+            min-height: 100vh;
+            padding-bottom: 150px;
+            transition: background 0.3s ease;
+            color: var(--text-primary);
+        }
+        
         .header {
-            background: var(--card-bg);
+            background: rgba(255, 255, 255, 0.8);
             backdrop-filter: blur(10px);
             color: var(--text-primary);
-            padding: 30px 20px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            text-align: center;
-            transition: background 0.3s ease, color 0.3s ease;
+            padding: 16px 24px;
+            box-shadow: 0 18px 50px rgba(38, 55, 118, 0.08);
+            border-radius: 24px;
+            margin: 24px auto;
+            max-width: 1200px;
+            transition: all 0.3s ease;
         }
+        
+        [data-theme="dark"] .header {
+            background: var(--card-bg);
+        }
+        
         .logo-container {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            gap: 15px;
-            margin-bottom: 20px;
+            gap: 12px;
+            margin-bottom: 15px;
         }
+        
         .logo-img {
-            width: 100px;
-            height: 100px;
-            border-radius: 20px;
+            width: 60px;
+            height: 60px;
+            border-radius: 18px;
             object-fit: cover;
-            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.3);
-            border: 4px solid white;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+            border: none;
+            background: var(--brand-gradient);
+            display: grid;
+            place-items: center;
+            color: white;
+            font-weight: 800;
+            font-size: 18px;
         }
+        
         .header h1 {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            font-size: 32px;
+            font-size: 18px;
             font-weight: 700;
+            letter-spacing: 0.02em;
+            color: var(--text-primary);
             margin: 0;
         }
+        
+        .header-subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-top: 2px;
+        }
+        
         .user-info {
             display: flex;
-            justify-content: center;
+            justify-content: space-between;
             align-items: center;
-            gap: 30px;
+            gap: 14px;
             flex-wrap: wrap;
-            margin-top: 20px;
+            margin-top: 15px;
         }
+        
+        .nav-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        
         .balance-display {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px 30px;
-            border-radius: 50px;
-            font-size: 24px;
-            font-weight: 600;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            padding: 12px 18px;
+            border-radius: 999px;
+            background: white;
+            box-shadow: 0 10px 24px rgba(27, 40, 71, 0.08);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-size: 16px;
         }
+        
+        [data-theme="dark"] .balance-display {
+            background: var(--input-bg);
+        }
+        
+        .balance-dot {
+            width: 10px;
+            height: 10px;
+            background: #ff6b00;
+            border-radius: 50%;
+        }
+        
         .container { 
             max-width: 1200px; 
             margin: 0 auto; 
-            padding: 30px 20px; 
+            padding: 0 24px 30px; 
         }
+        
         .card {
-            background: var(--card-bg);
+            background: linear-gradient(180deg, var(--card-bg), var(--card-bg-alt));
             backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 30px;
-            margin-bottom: 25px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.1);
-            border: 1px solid var(--border-color);
-            transition: background 0.3s ease, border-color 0.3s ease;
+            border-radius: 30px;
+            padding: 34px;
+            margin-bottom: 28px;
+            box-shadow: 0 30px 80px rgba(44, 57, 122, 0.12);
+            border: none;
+            transition: all 0.3s ease;
         }
+        
         .card h2 {
             color: var(--text-primary);
             margin-bottom: 20px;
-            font-size: 24px;
+            font-size: 28px;
+            letter-spacing: -0.03em;
             display: flex;
             align-items: center;
             gap: 10px;
             transition: color 0.3s ease;
         }
+        
         .btn {
-            padding: 14px 28px;
+            padding: 12px 18px;
             border: none;
-            border-radius: 12px;
+            border-radius: 16px;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: all 0.18s ease;
+            box-shadow: none;
         }
+        
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #5a5fff;
             color: white;
         }
+        
         .btn-primary:hover { 
-            transform: translateY(-3px); 
-            box-shadow: 0 6px 25px rgba(102, 126, 234, 0.4);
+            transform: translateY(-1px); 
         }
+        
         .btn-success { 
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            background: var(--success-gradient);
             color: white; 
         }
+        
         .btn-success:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 6px 25px rgba(40, 167, 69, 0.4);
+            transform: translateY(-1px);
         }
+        
         .btn-danger { 
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            background: var(--danger-gradient);
             color: white; 
         }
+        
         .btn-danger:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 6px 25px rgba(220, 53, 69, 0.4);
+            transform: translateY(-1px);
         }
-        .btn:active { transform: translateY(-1px); }
+        
+        .btn:active { 
+            transform: translateY(0); 
+        }
+        
         .logout-btn {
             background: rgba(220, 53, 69, 0.1);
             color: #dc3545;
             border: 2px solid #dc3545;
             padding: 10px 20px;
-            border-radius: 12px;
+            border-radius: 16px;
             cursor: pointer;
             font-size: 16px;
             font-weight: 600;
             transition: all 0.3s;
         }
+        
         .logout-btn:hover {
             background: #dc3545;
             color: white;
-            transform: translateY(-2px);
+            transform: translateY(-1px);
         }
+        
         .terminal-card {
             background: var(--terminal-card-bg);
             border: 2px solid var(--border-color);
-            border-radius: 16px;
+            border-radius: 22px;
             padding: 20px;
             margin-bottom: 15px;
-            transition: all 0.3s;
+            transition: all 0.2s;
         }
+        
         .terminal-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
         }
+        
         .terminal-card.active { 
             border-color: #28a745;
             background: linear-gradient(135deg, rgba(40, 167, 69, 0.1) 0%, rgba(32, 201, 151, 0.1) 100%);
         }
+        
         .terminal-card h3 {
             color: #667eea;
             font-size: 20px;
             margin-bottom: 10px;
         }
+        
         .stats { 
             display: grid; 
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); 
             gap: 20px; 
             margin-top: 20px; 
         }
+        
         .stat-box {
             background: var(--stat-box-bg);
             padding: 25px;
             border-radius: 16px;
             text-align: center;
             border: 2px solid var(--stat-box-border);
-            transition: all 0.3s;
+            transition: all 0.2s;
         }
+        
         .stat-box:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.2);
+            transform: translateY(-2px);
         }
+        
         .stat-value { 
             font-size: 36px; 
             font-weight: 700; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--primary-gradient);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
+        
         .stat-label { 
             color: var(--text-secondary); 
             font-size: 14px; 
@@ -3401,39 +3483,48 @@ def cabinet_page():
             font-weight: 500;
             transition: color 0.3s ease;
         }
-        input {
+        
+        input, select {
             width: 100%;
-            padding: 14px 18px;
-            border: 2px solid var(--input-border);
-            border-radius: 12px;
+            padding: 16px 18px;
+            border: 1px solid var(--input-border);
+            border-radius: 18px;
             font-size: 16px;
             margin-bottom: 15px;
-            transition: all 0.3s;
+            transition: all 0.2s;
             background: var(--input-bg);
             color: var(--text-primary);
-        }
-        input:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
-        .hidden { display: none; }
+        
+        input:focus, select:focus {
+            border-color: var(--input-focus);
+            box-shadow: 0 0 0 4px rgba(92, 107, 255, 0.12);
+        }
+        
+        .hidden { 
+            display: none; 
+        }
+        
         .transaction {
-            padding: 15px;
-            border-radius: 12px;
+            padding: 18px 20px;
+            border-radius: 22px;
             margin-bottom: 10px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            transition: all 0.3s;
+            transition: all 0.2s;
         }
+        
         .transaction:hover {
-            transform: translateX(5px);
+            transform: translateX(3px);
         }
+        
         .transaction.success { 
             background: var(--transaction-success-bg);
             border-left: 4px solid #28a745;
         }
+        
         .transaction.failed { 
             background: var(--transaction-failed-bg);
             border-left: 4px solid #dc3545;
