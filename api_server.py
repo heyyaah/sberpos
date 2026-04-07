@@ -1651,16 +1651,43 @@ def check_terminal_public():
     terminal_id = request.args.get('terminal_id')
     
     if not terminal_id:
+        print(f"❌ [TERMINAL CHECK] Missing terminal_id")
         return jsonify({'error': 'Missing terminal_id'}), 400
     
+    print(f"🔍 [TERMINAL CHECK] Checking {terminal_id}, total terminals in memory: {len(terminals)}")
+    print(f"🔍 [TERMINAL CHECK] Available terminals: {list(terminals.keys())[:10]}")
+    
     if terminal_id not in terminals:
-        return jsonify({'error': 'Terminal not found', 'exists': False}), 404
+        print(f"❌ [TERMINAL CHECK] Terminal {terminal_id} not found in memory")
+        # Пробуем загрузить из БД
+        if DATABASE_URL and PSYCOPG_AVAILABLE:
+            try:
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute('SELECT data FROM terminals WHERE terminal_id = %s', (terminal_id,))
+                row = cur.fetchone()
+                cur.close()
+                conn.close()
+                
+                if row:
+                    terminals[terminal_id] = row[0]
+                    print(f"✅ [TERMINAL CHECK] Loaded {terminal_id} from PostgreSQL")
+                else:
+                    print(f"❌ [TERMINAL CHECK] {terminal_id} not in PostgreSQL either")
+                    return jsonify({'error': 'Terminal not found', 'exists': False}), 404
+            except Exception as e:
+                print(f"❌ [TERMINAL CHECK] DB error: {e}")
+                return jsonify({'error': 'Terminal not found', 'exists': False}), 404
+        else:
+            return jsonify({'error': 'Terminal not found', 'exists': False}), 404
     
     terminal = terminals[terminal_id]
     current = terminal.get('current_payload', {})
     state = current.get('state', 'idle')
     amount = current.get('data', {}).get('amount', '0')
     qr_password = terminal.get('qr_password', '')
+    
+    print(f"✅ [TERMINAL CHECK] {terminal_id}: state={state}, qr_password={qr_password}")
     
     return jsonify({
         'success': True,
