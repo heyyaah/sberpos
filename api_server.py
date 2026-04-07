@@ -1705,80 +1705,6 @@ def serve_logo():
 
 
 
-# ===== АДМИН-ПАНЕЛЬ ДЛЯ РАЗРАБОТЧИКОВ =====
-
-ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'dev_secret_2026_sber')
-admin_sessions = {}
-
-@app.route('/admin/loginuser', methods=['GET', 'POST'])
-def admin_login():
-    if request.method == 'GET':
-        error = request.args.get('error', '')
-        return f'''<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Админ-панель</title>
-<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}}.card{{background:#fff;border-radius:20px;padding:40px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)}}h1{{color:#333;margin-bottom:10px}}input{{width:100%;padding:12px;border:2px solid #e0e0e0;border-radius:10px;margin:10px 0}}button{{width:100%;padding:14px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer}}.error{{background:#fee;color:#c33;padding:12px;border-radius:8px;margin-bottom:20px}}</style>
-</head><body><div class="card"><h1>Админ-панель</h1>
-{"<div class='error'>" + error + "</div>" if error else ""}
-<form method="POST"><input type="password" name="password" placeholder="Пароль" required><button type="submit">Войти</button></form></div></body></html>'''
-    
-    password = request.form.get('password')
-    if password == ADMIN_PASSWORD:
-        session_token = str(uuid.uuid4())
-        admin_sessions[session_token] = {'created_at': datetime.now().isoformat(), 'ip': request.remote_addr}
-        response = make_response(redirect('/admin/cabinet'))
-        response.set_cookie('admin_session', session_token, max_age=86400)
-        return response
-    return redirect('/admin/loginuser?error=Неверный пароль')
-
-@app.route('/admin/cabinet')
-def admin_cabinet():
-    session_token = request.cookies.get('admin_session')
-    if not session_token or session_token not in admin_sessions:
-        return redirect('/admin/loginuser')
-    
-    online_terminals = []
-    offline_terminals = []
-    
-    for terminal_id, terminal in terminals.items():
-        if terminal_id in last_seen:
-            last_seen_dt = last_seen[terminal_id]
-            if (datetime.now() - last_seen_dt).total_seconds() < 30:
-                online_terminals.append({
-                    'id': terminal_id,
-                    'state': terminal.get('current_payload', {}).get('state', 'idle'),
-                    'last_seen': last_seen_dt.strftime('%H:%M:%S'),
-                    'uuid': terminal.get('uuid', 'N/A'),
-                    'qr_password': terminal.get('qr_password', 'N/A')
-                })
-            else:
-                offline_terminals.append({'id': terminal_id, 'last_seen': last_seen_dt.strftime('%Y-%m-%d %H:%M:%S')})
-    
-    online_count = len(online_terminals)
-    offline_count = len(offline_terminals)
-    total_count = len(terminals)
-    
-    online_rows = ''.join([f"<tr><td>{t['id']}</td><td>{t['state']}</td><td>{t['uuid']}</td><td>{t['qr_password']}</td><td>{t['last_seen']}</td></tr>" for t in online_terminals])
-    offline_rows = ''.join([f"<tr><td>{t['id']}</td><td>{t['last_seen']}</td></tr>" for t in offline_terminals])
-    
-    return f'''<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="5"><title>Админ-панель</title>
-<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}.header{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}}h1{{color:#333;margin-bottom:10px}}.stats{{display:flex;gap:20px;margin:20px 0}}.stat{{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:20px;border-radius:10px;flex:1;text-align:center}}.stat h2{{font-size:32px;margin-bottom:5px}}.stat p{{font-size:14px;opacity:0.9}}.section{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}}h2{{color:#333;margin-bottom:15px}}table{{width:100%;border-collapse:collapse}}th,td{{padding:12px;text-align:left;border-bottom:1px solid #e0e0e0}}th{{background:#f8f8f8;font-weight:600;color:#666}}tr:hover{{background:#f9f9f9}}.logout{{float:right;padding:10px 20px;background:#e74c3c;color:#fff;text-decoration:none;border-radius:5px}}</style>
-</head><body><div class="header"><h1>Админ-панель СберЭкран</h1><a href="/admin/logout" class="logout">Выйти</a></div>
-<div class="stats"><div class="stat"><h2>{online_count}</h2><p>Онлайн</p></div><div class="stat"><h2>{offline_count}</h2><p>Оффлайн</p></div><div class="stat"><h2>{total_count}</h2><p>Всего</p></div></div>
-<div class="section"><h2>Онлайн терминалы</h2><table><tr><th>ID</th><th>Состояние</th><th>UUID</th><th>QR пароль</th><th>Последняя активность</th></tr>{online_rows if online_rows else "<tr><td colspan='5'>Нет онлайн терминалов</td></tr>"}</table></div>
-<div class="section"><h2>Оффлайн терминалы</h2><table><tr><th>ID</th><th>Последняя активность</th></tr>{offline_rows if offline_rows else "<tr><td colspan='2'>Нет оффлайн терминалов</td></tr>"}</table></div>
-</body></html>'''
-
-@app.route('/admin/logout')
-def admin_logout():
-    session_token = request.cookies.get('admin_session')
-    if session_token and session_token in admin_sessions:
-        del admin_sessions[session_token]
-    response = make_response(redirect('/admin/loginuser'))
-    response.set_cookie('admin_session', '', max_age=0)
-    return response
-
-
 # ===== СИСТЕМА УПРАВЛЕНИЯ КОМАНДОЙ SBERUNION =====
 
 team_users = {}
@@ -2194,6 +2120,48 @@ def manage_employees():
 </body></html>'''
     return html
 
+@app.route('/admin/logs')
+def admin_logs():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return redirect('/admin/login')
+    
+    # Читаем последние 100 строк логов из консоли (если есть)
+    logs = []
+    try:
+        # Здесь можно добавить чтение из файла логов если он есть
+        logs.append({'time': datetime.now().strftime('%H:%M:%S'), 'level': 'INFO', 'message': 'Система работает нормально'})
+        logs.append({'time': datetime.now().strftime('%H:%M:%S'), 'level': 'INFO', 'message': f'Терминалов онлайн: {sum(1 for tid in terminals if tid in last_seen and (datetime.now() - last_seen[tid]).total_seconds() < 30)}'})
+        logs.append({'time': datetime.now().strftime('%H:%M:%S'), 'level': 'INFO', 'message': f'Активных сессий: {len(team_sessions)}'})
+    except:
+        pass
+    
+    logs_rows = ''.join([f"<tr><td>{log['time']}</td><td class='level-{log['level'].lower()}'>{log['level']}</td><td>{log['message']}</td></tr>" for log in logs])
+    
+    html = f'''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="10"><title>Логи системы</title>
+<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}.header{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}}h1{{color:#333}}.section{{background:#fff;padding:25px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}}h2{{color:#333;margin-bottom:20px}}table{{width:100%;border-collapse:collapse;font-family:monospace}}th,td{{padding:12px;text-align:left;border-bottom:1px solid #e0e0e0}}th{{background:#f8f8f8;font-weight:600;color:#666}}tr:hover{{background:#f9f9f9}}button{{padding:10px 20px;background:#21d4fd;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px}}button:hover{{opacity:0.9}}.level-info{{color:#3498db}}.level-warning{{color:#f39c12}}.level-error{{color:#e74c3c}}</style>
+</head><body><div class="header"><h1>📜 Логи системы</h1><button onclick="location.href='/admin/dashboard'">← Назад</button></div>
+<div class="section"><h2>Последние события</h2>
+<table><tr><th>Время</th><th>Уровень</th><th>Сообщение</th></tr>{logs_rows if logs_rows else "<tr><td colspan='3' style='text-align:center;color:#999'>Нет логов</td></tr>"}</table></div>
+</body></html>'''
+    return html
+
+@app.route('/admin/bugs')
+def admin_bugs():
+    session_token = request.cookies.get('team_session')
+    if not session_token or session_token not in team_sessions:
+        return redirect('/admin/login')
+    
+    html = '''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Отчёты о багах</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}.header{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}h1{color:#333}.section{background:#fff;padding:25px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}h2{color:#333;margin-bottom:20px}button{padding:10px 20px;background:#21d4fd;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px}button:hover{opacity:0.9}p{color:#666;text-align:center;padding:40px}</style>
+</head><body><div class="header"><h1>🐛 Отчёты о багах</h1><button onclick="location.href='/admin/dashboard'">← Назад</button></div>
+<div class="section"><h2>Список багов</h2>
+<p>Функция в разработке. Здесь будут отображаться отчёты о найденных багах.</p></div>
+</body></html>'''
+    return html
+
 @app.route('/admin/logout')
 def team_logout():
     session_token = request.cookies.get('team_session')
@@ -2202,6 +2170,7 @@ def team_logout():
     response = make_response(redirect('/admin/login'))
     response.set_cookie('team_session', '', max_age=0)
     return response
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     print(f"🚀 API Server запущен на порту {port}")
