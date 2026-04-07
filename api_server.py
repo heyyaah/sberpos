@@ -2202,10 +2202,6 @@ def team_logout():
     response = make_response(redirect('/admin/login'))
     response.set_cookie('team_session', '', max_age=0)
     return response
-
-@app.route('/admin/loginuser', methods=['GET', 'POST'])
-def admin_login_old():
-    return redirect('/admin/login')
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     print(f"🚀 API Server запущен на порту {port}")
