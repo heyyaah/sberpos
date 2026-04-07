@@ -1993,21 +1993,26 @@ def team_terminals():
                     'state': terminal.get('current_payload', {}).get('state', 'idle'),
                     'last_seen': last_seen_dt.strftime('%H:%M:%S'),
                     'uuid': terminal.get('uuid', 'N/A'),
+                    'password': terminal.get('password', 'N/A'),
                     'qr_password': terminal.get('qr_password', 'N/A')
                 })
             else:
-                offline_terminals.append({'id': terminal_id, 'last_seen': last_seen_dt.strftime('%Y-%m-%d %H:%M:%S')})
+                offline_terminals.append({
+                    'id': terminal_id,
+                    'last_seen': last_seen_dt.strftime('%Y-%m-%d %H:%M:%S'),
+                    'password': terminal.get('password', 'N/A')
+                })
     
-    online_rows = ''.join([f"<tr><td>{t['id']}</td><td><span class='status-{t['state']}'>{t['state']}</span></td><td>{t['uuid']}</td><td>{t['qr_password']}</td><td>{t['last_seen']}</td></tr>" for t in online_terminals])
-    offline_rows = ''.join([f"<tr><td>{t['id']}</td><td>{t['last_seen']}</td></tr>" for t in offline_terminals])
+    online_rows = ''.join([f"<tr><td>{t['id']}</td><td><span class='status-{t['state']}'>{t['state']}</span></td><td>{t['uuid']}</td><td><code>{t['password']}</code></td><td><code>{t['qr_password']}</code></td><td>{t['last_seen']}</td></tr>" for t in online_terminals])
+    offline_rows = ''.join([f"<tr><td>{t['id']}</td><td><code>{t['password']}</code></td><td>{t['last_seen']}</td></tr>" for t in offline_terminals])
     
     html = f'''<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="5"><title>Мониторинг терминалов</title>
-<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}.header{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}}h1{{color:#333}}.stats{{display:flex;gap:20px;margin:20px 0}}.stat{{background:linear-gradient(135deg,#21d4fd 0%,#b721ff 100%);color:#fff;padding:20px;border-radius:10px;flex:1;text-align:center}}.stat h2{{font-size:32px;margin-bottom:5px}}.stat p{{font-size:14px;opacity:0.9}}.section{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}}h2{{color:#333;margin-bottom:15px}}table{{width:100%;border-collapse:collapse}}th,td{{padding:12px;text-align:left;border-bottom:1px solid #e0e0e0}}th{{background:#f8f8f8;font-weight:600;color:#666}}tr:hover{{background:#f9f9f9}}button{{padding:10px 20px;background:#21d4fd;color:#fff;border:none;border-radius:5px;cursor:pointer;text-decoration:none;display:inline-block;font-size:14px}}button:hover{{opacity:0.9}}.status-idle{{color:#999}}.status-pay{{color:#f39c12;font-weight:600}}.status-success{{color:#27ae60;font-weight:600}}.status-error{{color:#e74c3c;font-weight:600}}</style>
+<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}}.header{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center}}h1{{color:#333}}.stats{{display:flex;gap:20px;margin:20px 0}}.stat{{background:linear-gradient(135deg,#21d4fd 0%,#b721ff 100%);color:#fff;padding:20px;border-radius:10px;flex:1;text-align:center}}.stat h2{{font-size:32px;margin-bottom:5px}}.stat p{{font-size:14px;opacity:0.9}}.section{{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}}h2{{color:#333;margin-bottom:15px}}table{{width:100%;border-collapse:collapse}}th,td{{padding:12px;text-align:left;border-bottom:1px solid #e0e0e0}}th{{background:#f8f8f8;font-weight:600;color:#666}}tr:hover{{background:#f9f9f9}}button{{padding:10px 20px;background:#21d4fd;color:#fff;border:none;border-radius:5px;cursor:pointer;text-decoration:none;display:inline-block;font-size:14px}}button:hover{{opacity:0.9}}.status-idle{{color:#999}}.status-pay{{color:#f39c12;font-weight:600}}.status-success{{color:#27ae60;font-weight:600}}.status-error{{color:#e74c3c;font-weight:600}}code{{background:#f0f0f0;padding:4px 8px;border-radius:4px;font-family:monospace;font-size:13px;color:#e74c3c;font-weight:600}}</style>
 </head><body><div class="header"><h1>🖥️ Мониторинг терминалов</h1><button onclick="location.href='/admin/dashboard'">← Назад</button></div>
 <div class="stats"><div class="stat"><h2>{len(online_terminals)}</h2><p>Онлайн</p></div><div class="stat"><h2>{len(offline_terminals)}</h2><p>Оффлайн</p></div><div class="stat"><h2>{len(terminals)}</h2><p>Всего</p></div></div>
-<div class="section"><h2>✅ Онлайн терминалы</h2><table><tr><th>ID</th><th>Состояние</th><th>UUID</th><th>QR пароль</th><th>Последняя активность</th></tr>{online_rows if online_rows else "<tr><td colspan='5' style='text-align:center;color:#999'>Нет онлайн терминалов</td></tr>"}</table></div>
-<div class="section"><h2>❌ Оффлайн терминалы</h2><table><tr><th>ID</th><th>Последняя активность</th></tr>{offline_rows if offline_rows else "<tr><td colspan='2' style='text-align:center;color:#999'>Нет оффлайн терминалов</td></tr>"}</table></div>
+<div class="section"><h2>✅ Онлайн терминалы</h2><table><tr><th>ID</th><th>Состояние</th><th>UUID</th><th>Пароль</th><th>QR пароль</th><th>Последняя активность</th></tr>{online_rows if online_rows else "<tr><td colspan='6' style='text-align:center;color:#999'>Нет онлайн терминалов</td></tr>"}</table></div>
+<div class="section"><h2>❌ Оффлайн терминалы</h2><table><tr><th>ID</th><th>Пароль</th><th>Последняя активность</th></tr>{offline_rows if offline_rows else "<tr><td colspan='3' style='text-align:center;color:#999'>Нет оффлайн терминалов</td></tr>"}</table></div>
 </body></html>'''
     return html
 
