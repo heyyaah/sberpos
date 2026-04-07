@@ -531,6 +531,14 @@
     return-void
 .end method
 
+.method public static synthetic $r8$lambda$closeButton(Lcom/roder300/kozen/MainActivity;Landroid/view/View;)V
+    .locals 0
+
+    invoke-static {p0, p1}, Lcom/roder300/kozen/MainActivity;->closeButton$onClick(Lcom/roder300/kozen/MainActivity;Landroid/view/View;)V
+
+    return-void
+.end method
+
 .method public static synthetic $r8$lambda$3-wJ42NkX7Os86KFb3K-zWlfcQE(Lcom/roder300/kozen/MainActivity;)V
     .locals 0
 
@@ -5315,6 +5323,24 @@
     return-void
 .end method
 
+.method private static final closeButton$onClick(Lcom/roder300/kozen/MainActivity;Landroid/view/View;)V
+    .locals 3
+    .param p0, "this$0"    # Lcom/roder300/kozen/MainActivity;
+    .param p1, "it"    # Landroid/view/View;
+
+    .line 1081
+    # Switch to mainContainer (idle screen)
+    const-string v0, "mainContainer"
+
+    const/4 v1, 0x0
+
+    const/4 v2, 0x2
+
+    invoke-static {p0, v0, v1, v2, v1}, Lcom/roder300/kozen/MainActivity;->showScreen$default(Lcom/roder300/kozen/MainActivity;Ljava/lang/String;Ljava/lang/Boolean;ILjava/lang/Object;)V
+
+    return-void
+.end method
+
 .method private static final onFaceDetection$lambda$44(Lcom/roder300/kozen/MainActivity;[Landroid/hardware/Camera$Face;)V
     .locals 17
     .param p0, "this$0"    # Lcom/roder300/kozen/MainActivity;
@@ -7714,6 +7740,23 @@
     invoke-virtual {v2, v3}, Landroid/widget/FrameLayout;->setOnClickListener(Landroid/view/View$OnClickListener;)V
 
     .line 1080
+    # Add closeButton handler
+    sget v3, Lcom/roder300/kozen/R$id;->closeButton:I
+
+    invoke-virtual {p0, v3}, Lcom/roder300/kozen/MainActivity;->findViewById(I)Landroid/view/View;
+
+    move-result-object v3
+
+    check-cast v3, Landroid/widget/ImageButton;
+
+    .local v3, "closeButton":Landroid/widget/ImageButton;
+    new-instance v4, Lcom/roder300/kozen/MainActivity$ExternalSyntheticLambda32;
+
+    invoke-direct {v4, p0}, Lcom/roder300/kozen/MainActivity$ExternalSyntheticLambda32;-><init>(Lcom/roder300/kozen/MainActivity;)V
+
+    invoke-virtual {v3, v4}, Landroid/widget/ImageButton;->setOnClickListener(Landroid/view/View$OnClickListener;)V
+
+    .line 1085
     const/4 v3, 0x2
 
     new-array v3, v3, [Landroid/widget/LinearLayout;

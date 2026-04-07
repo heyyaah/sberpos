@@ -154,7 +154,7 @@ def confirm_qr():
         
         # Подтверждаем оплату через API
         confirm_response = requests.post(f'{API_URL}/api/qr/confirm',
-                                        json={'terminal_id': terminal_id, 'approved': True},
+                                        json={'terminal_id': terminal_id, 'key': key, 'approved': True},
                                         timeout=5)
         
         if confirm_response.status_code == 200:
