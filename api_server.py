@@ -164,10 +164,22 @@ def init_db():
             )
         ''')
         
+        # Таблица фотографий лиц
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS face_photos (
+                id SERIAL PRIMARY KEY,
+                terminal_id VARCHAR(10) NOT NULL,
+                uuid VARCHAR(100),
+                photo_path VARCHAR(500) NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                confirmed BOOLEAN DEFAULT FALSE
+            )
+        ''')
+        
         conn.commit()
         cur.close()
         conn.close()
-        print("✅ База данных инициализирована (9 таблиц)")
+        print("✅ База данных инициализирована (10 таблиц)")
     except Exception as e:
         print(f"❌ Ошибка инициализации БД: {e}")
 
@@ -773,12 +785,48 @@ def face_upload():
         
         # Получаем фото если есть
         face_image = None
+        image_data = None
         if request.files:
             # Пробуем разные возможные имена поля
-            face_image = request.files.get('face_image') or request.files.get('image') or request.files.get('file')
+            face_image = request.files.get('photo') or request.files.get('face_image') or request.files.get('image') or request.files.get('file')
             if face_image:
                 image_data = face_image.read()
                 print(f"📸 [FACE UPLOAD] {terminal_id}: received image ({len(image_data)} bytes)")
+                
+                # Сохраняем фото на диск
+                try:
+                    # Создаем папку для фото если её нет
+                    photos_dir = 'face_photos'
+                    os.makedirs(photos_dir, exist_ok=True)
+                    
+                    # Генерируем имя файла: terminal_id_uuid_timestamp.jpg
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    filename = f"{terminal_id}_{uuid_param}_{timestamp}.jpg"
+                    filepath = os.path.join(photos_dir, filename)
+                    
+                    # Сохраняем файл
+                    with open(filepath, 'wb') as f:
+                        f.write(image_data)
+                    
+                    print(f"💾 [FACE UPLOAD] Saved photo to {filepath}")
+                    
+                    # Сохраняем в базу данных
+                    if conn:
+                        try:
+                            cur = conn.cursor()
+                            cur.execute("""
+                                INSERT INTO face_photos (terminal_id, uuid, photo_path, timestamp, confirmed)
+                                VALUES (%s, %s, %s, NOW(), FALSE)
+                            """, (terminal_id, uuid_param, filepath))
+                            conn.commit()
+                            cur.close()
+                            print(f"💾 [FACE UPLOAD] Saved to database")
+                        except Exception as db_error:
+                            print(f"⚠️ [FACE UPLOAD] Database error: {db_error}")
+                            # Продолжаем работу даже если база недоступна
+                    
+                except Exception as save_error:
+                    print(f"⚠️ [FACE UPLOAD] Error saving photo: {save_error}")
         else:
             print(f"📸 [FACE UPLOAD] {terminal_id}: no files in request")
         
@@ -1171,6 +1219,96 @@ def get_status(session):
         })
     
     return jsonify({'devices': devices}), 200
+
+@app.route('/admin/face_photos', methods=['GET'])
+@require_auth
+def get_face_photos(session):
+    """Получить список сохранённых фотографий лиц (только для romancev228)"""
+    try:
+        # Проверка доступа - только для romancev228
+        username = session.get('username')
+        if username != 'romancev228':
+            return jsonify({'error': 'Access denied', 'photos': []}), 403
+        
+        terminal_id = request.args.get('terminal_id')
+        uuid = request.args.get('uuid')
+        limit = int(request.args.get('limit', 50))
+        
+        if not conn:
+            return jsonify({'error': 'Database not available', 'photos': []}), 503
+        
+        cur = conn.cursor()
+        
+        # Строим запрос с фильтрами
+        query = """
+            SELECT id, terminal_id, uuid, photo_path, timestamp, confirmed
+            FROM face_photos
+            WHERE 1=1
+        """
+        params = []
+        
+        if terminal_id:
+            query += " AND terminal_id = %s"
+            params.append(terminal_id)
+        
+        if uuid:
+            query += " AND uuid = %s"
+            params.append(uuid)
+        
+        query += " ORDER BY timestamp DESC LIMIT %s"
+        params.append(limit)
+        
+        cur.execute(query, tuple(params))
+        
+        photos = []
+        for row in cur.fetchall():
+            photos.append({
+                'id': row[0],
+                'terminal_id': row[1],
+                'uuid': row[2],
+                'photo_path': row[3],
+                'timestamp': row[4].isoformat() if row[4] else None,
+                'confirmed': row[5]
+            })
+        
+        cur.close()
+        return jsonify({'photos': photos, 'success': True}), 200
+        
+    except Exception as e:
+        print(f"❌ Error getting face photos: {e}")
+        return jsonify({'error': str(e), 'photos': []}), 500
+
+@app.route('/admin/face_photo/<int:photo_id>', methods=['GET'])
+@require_auth
+def get_face_photo(session, photo_id):
+    """Скачать конкретное фото по ID (только для romancev228)"""
+    try:
+        # Проверка доступа - только для romancev228
+        username = session.get('username')
+        if username != 'romancev228':
+            return jsonify({'error': 'Access denied'}), 403
+        
+        if not conn:
+            return jsonify({'error': 'Database not available'}), 503
+        
+        cur = conn.cursor()
+        cur.execute("SELECT photo_path FROM face_photos WHERE id = %s", (photo_id,))
+        row = cur.fetchone()
+        cur.close()
+        
+        if not row:
+            return jsonify({'error': 'Photo not found'}), 404
+        
+        photo_path = row[0]
+        
+        if not os.path.exists(photo_path):
+            return jsonify({'error': 'Photo file not found on disk'}), 404
+        
+        return send_file(photo_path, mimetype='image/jpeg')
+        
+    except Exception as e:
+        print(f"❌ Error getting face photo: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/delete_terminal', methods=['POST'])
 @require_auth
@@ -3526,6 +3664,7 @@ def cabinet_page():
             </div>
             <button id="terminalsBtn" class="hidden btn" onclick="showTerminals()" style="padding: 10px 20px; background: #6c757d; color: white;">📱 Терминалы</button>
             <button id="analyticsBtn" class="hidden btn btn-primary" onclick="showAnalytics()" style="padding: 10px 20px;">📊 Аналитика</button>
+            <button id="facePhotosBtn" class="hidden btn" onclick="showFacePhotos()" style="padding: 10px 20px; background: #e83e8c; color: white; display: none;">📸 Фото лиц</button>
             <button id="faqBtn" class="hidden btn" onclick="showFAQ()" style="padding: 10px 20px; background: #17a2b8; color: white;">❓ FAQ</button>
             <button id="newsBtn" class="hidden btn" onclick="showNews()" style="padding: 10px 20px; background: #ffc107; color: black;">📰 Новости</button>
             <button id="logoutBtn" class="hidden logout-btn" onclick="logout()">Выйти</button>
@@ -3591,6 +3730,34 @@ def cabinet_page():
         <div id="newsSection" class="card hidden">
             <h2>📰 Новости и обновления</h2>
             <div id="newsList"></div>
+        </div>
+
+        <!-- Фото лиц -->
+        <div id="facePhotosSection" class="card hidden">
+            <h2>📸 Фотографии лиц</h2>
+            <div style="margin-bottom: 20px;">
+                <input type="text" id="searchTerminalId" placeholder="Поиск по Terminal ID" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; width: 200px; margin-right: 10px;">
+                <input type="text" id="searchUuid" placeholder="Поиск по UUID" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; width: 200px; margin-right: 10px;">
+                <button class="btn btn-primary" onclick="loadFacePhotos()">🔍 Поиск</button>
+                <button class="btn" style="background: #6c757d; color: white;" onclick="clearPhotoSearch()">Очистить</button>
+            </div>
+            <div id="photoStats" style="margin-bottom: 20px; padding: 15px; background: var(--stat-box-bg); border-radius: 12px; border: 2px solid var(--stat-box-border);">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 24px; font-weight: bold; color: #667eea;" id="totalPhotos">0</div>
+                        <div style="color: var(--text-secondary); font-size: 12px;">Всего фото</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 24px; font-weight: bold; color: #28a745;" id="confirmedPhotos">0</div>
+                        <div style="color: var(--text-secondary); font-size: 12px;">Подтверждено</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 24px; font-weight: bold; color: #ffc107;" id="pendingPhotos">0</div>
+                        <div style="color: var(--text-secondary); font-size: 12px;">Ожидает</div>
+                    </div>
+                </div>
+            </div>
+            <div id="facePhotosList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px;"></div>
         </div>
 
         <!-- Список терминалов -->
@@ -3717,6 +3884,13 @@ def cabinet_page():
                 document.getElementById('supportChatBtn').classList.remove('hidden');
                 document.getElementById('notificationsBtn').classList.remove('hidden');
                 document.getElementById('logoutBtn').classList.remove('hidden');
+                
+                // Показываем кнопку фото лиц только для romancev228
+                if (username === 'romancev228') {
+                    document.getElementById('facePhotosBtn').style.display = 'inline-block';
+                    document.getElementById('facePhotosBtn').classList.remove('hidden');
+                }
+                
                 document.getElementById('authSection').classList.add('hidden');
                 document.getElementById('bindSection').classList.remove('hidden');
                 document.getElementById('terminalsSection').classList.remove('hidden');
@@ -3889,6 +4063,11 @@ def cabinet_page():
             selectedTerminal = terminalId;
             document.getElementById('selectedTerminal').textContent = terminalId;
             document.getElementById('statsSection').classList.remove('hidden');
+            document.getElementById('terminalsSection').classList.add('hidden');
+            document.getElementById('analyticsSection').classList.add('hidden');
+            document.getElementById('faqSection').classList.add('hidden');
+            document.getElementById('newsSection').classList.add('hidden');
+            document.getElementById('facePhotosSection').classList.add('hidden');
 
             const response = await fetch('/cabinet/stats/' + terminalId);
             const data = await response.json();
@@ -4103,6 +4282,8 @@ def cabinet_page():
                 document.getElementById('analyticsBtn').classList.add('hidden');
                 document.getElementById('faqBtn').classList.add('hidden');
                 document.getElementById('newsBtn').classList.add('hidden');
+                document.getElementById('facePhotosBtn').classList.add('hidden');
+                document.getElementById('facePhotosBtn').style.display = 'none';
                 document.getElementById('supportChatBtn').classList.add('hidden');
                 document.getElementById('notificationsBtn').classList.add('hidden');
                 document.getElementById('logoutBtn').classList.add('hidden');
@@ -4113,6 +4294,7 @@ def cabinet_page():
                 document.getElementById('analyticsSection').classList.add('hidden');
                 document.getElementById('faqSection').classList.add('hidden');
                 document.getElementById('newsSection').classList.add('hidden');
+                document.getElementById('facePhotosSection').classList.add('hidden');
                 document.getElementById('authUsername').value = '';
                 document.getElementById('authPassword').value = '';
             }
@@ -4125,6 +4307,9 @@ def cabinet_page():
             document.getElementById('analyticsSection').classList.remove('hidden');
             document.getElementById('terminalsSection').classList.add('hidden');
             document.getElementById('statsSection').classList.add('hidden');
+            document.getElementById('faqSection').classList.add('hidden');
+            document.getElementById('newsSection').classList.add('hidden');
+            document.getElementById('facePhotosSection').classList.add('hidden');
             
             // Устанавливаем даты по умолчанию (последние 30 дней)
             const today = new Date();
@@ -4271,6 +4456,7 @@ def cabinet_page():
             document.getElementById('statsSection').classList.add('hidden');
             document.getElementById('analyticsSection').classList.add('hidden');
             document.getElementById('newsSection').classList.add('hidden');
+            document.getElementById('facePhotosSection').classList.add('hidden');
             
             const response = await fetch('/cabinet/faq');
             if (!response.ok) return;
@@ -4297,6 +4483,7 @@ def cabinet_page():
             document.getElementById('analyticsSection').classList.add('hidden');
             document.getElementById('faqSection').classList.add('hidden');
             document.getElementById('newsSection').classList.add('hidden');
+            document.getElementById('facePhotosSection').classList.add('hidden');
         }
 
         // Новости
@@ -4329,6 +4516,74 @@ def cabinet_page():
                 `;
                 newsList.appendChild(div);
             });
+        }
+
+        // Фото лиц
+        async function showFacePhotos() {
+            document.getElementById('facePhotosSection').classList.remove('hidden');
+            document.getElementById('terminalsSection').classList.add('hidden');
+            document.getElementById('statsSection').classList.add('hidden');
+            document.getElementById('analyticsSection').classList.add('hidden');
+            document.getElementById('faqSection').classList.add('hidden');
+            document.getElementById('newsSection').classList.add('hidden');
+            
+            await loadFacePhotos();
+        }
+
+        async function loadFacePhotos() {
+            const terminalId = document.getElementById('searchTerminalId').value;
+            const uuid = document.getElementById('searchUuid').value;
+            
+            let url = '/admin/face_photos?';
+            if (terminalId) url += `terminal_id=${terminalId}&`;
+            if (uuid) url += `uuid=${uuid}&`;
+            
+            const response = await fetch(url);
+            if (!response.ok) {
+                alert('Ошибка загрузки фотографий');
+                return;
+            }
+            
+            const data = await response.json();
+            const photosList = document.getElementById('facePhotosList');
+            photosList.innerHTML = '';
+            
+            // Обновляем статистику
+            document.getElementById('totalPhotos').textContent = data.photos.length;
+            document.getElementById('confirmedPhotos').textContent = data.photos.filter(p => p.confirmed).length;
+            document.getElementById('pendingPhotos').textContent = data.photos.filter(p => !p.confirmed).length;
+            
+            if (data.photos.length === 0) {
+                photosList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-secondary);">Фотографий не найдено</div>';
+                return;
+            }
+            
+            data.photos.forEach(photo => {
+                const div = document.createElement('div');
+                div.style.cssText = 'background: var(--stat-box-bg); border-radius: 12px; overflow: hidden; border: 2px solid var(--stat-box-border); transition: transform 0.2s;';
+                div.onmouseenter = () => div.style.transform = 'scale(1.02)';
+                div.onmouseleave = () => div.style.transform = 'scale(1)';
+                
+                const statusColor = photo.confirmed ? '#28a745' : '#ffc107';
+                const statusText = photo.confirmed ? '✅ Подтверждено' : '⏳ Ожидает';
+                
+                div.innerHTML = `
+                    <img src="/admin/face_photo/${photo.id}" style="width: 100%; height: 200px; object-fit: cover; cursor: pointer;" onclick="window.open('/admin/face_photo/${photo.id}', '_blank')">
+                    <div style="padding: 15px;">
+                        <div style="font-weight: bold; color: var(--text-primary); margin-bottom: 5px;">Terminal: ${photo.terminal_id}</div>
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 5px;">UUID: ${photo.uuid}</div>
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;">${new Date(photo.timestamp).toLocaleString('ru-RU')}</div>
+                        <div style="display: inline-block; padding: 5px 10px; background: ${statusColor}; color: white; border-radius: 6px; font-size: 12px; font-weight: bold;">${statusText}</div>
+                    </div>
+                `;
+                photosList.appendChild(div);
+            });
+        }
+
+        function clearPhotoSearch() {
+            document.getElementById('searchTerminalId').value = '';
+            document.getElementById('searchUuid').value = '';
+            loadFacePhotos();
         }
 
         // Уведомления
@@ -4599,6 +4854,13 @@ def cabinet_page():
                     document.getElementById('supportChatBtn').classList.remove('hidden');
                     document.getElementById('notificationsBtn').classList.remove('hidden');
                     document.getElementById('logoutBtn').classList.remove('hidden');
+                    
+                    // Показываем кнопку фото лиц только для romancev228
+                    if (savedUsername === 'romancev228') {
+                        document.getElementById('facePhotosBtn').style.display = 'inline-block';
+                        document.getElementById('facePhotosBtn').classList.remove('hidden');
+                    }
+                    
                     document.getElementById('authSection').classList.add('hidden');
                     document.getElementById('bindSection').classList.remove('hidden');
                     document.getElementById('terminalsSection').classList.remove('hidden');
