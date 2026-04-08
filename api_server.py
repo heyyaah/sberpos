@@ -2872,6 +2872,7 @@ h1 { color: #333; font-size: 28px; margin-bottom: 10px; }
     box-shadow: 0 10px 30px rgba(0,0,0,0.2);
     margin-bottom: 20px;
 }
+.section.hidden { display: none; }
 h2 { color: #333; margin-bottom: 20px; font-size: 20px; }
 .form-group { margin-bottom: 15px; }
 label { display: block; color: #555; font-weight: 600; margin-bottom: 5px; font-size: 14px; }
@@ -2913,6 +2914,11 @@ input:focus {
     color: white;
 }
 .btn-danger:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(235, 51, 73, 0.4); }
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+.btn-secondary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(108, 117, 125, 0.4); }
 .message {
     padding: 15px;
     border-radius: 8px;
@@ -2941,24 +2947,11 @@ input:focus {
     color: white;
     border-color: #667eea;
 }
-.info-box {
-    background: #e3f2fd;
-    padding: 15px;
-    border-radius: 8px;
-    border-left: 4px solid #2196f3;
-    margin-bottom: 20px;
-    font-size: 14px;
-    color: #1565c0;
-}
 .terminal-info {
-    background: #f5f7fa;
-    padding: 15px;
-    border-radius: 8px;
-    margin-top: 15px;
-    display: none;
-}
-.terminal-info.active {
-    display: block;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
 }
 .info-row {
     display: flex;
@@ -2975,6 +2968,7 @@ input:focus {
 }
 .info-value {
     color: #333;
+    font-family: monospace;
 }
 </style>
 </head><body>
@@ -2986,11 +2980,8 @@ input:focus {
     
     <div id="message"></div>
     
-    <div class="info-box">
-        ℹ️ Для работы с терминалом введите его ID и пароль. Данные других терминалов не отображаются из соображений безопасности.
-    </div>
-    
-    <div class="section">
+    <!-- Секция подключения (показывается если терминал не подключен) -->
+    <div id="connectSection" class="section">
         <h2>🔐 Подключить терминал</h2>
         <div class="form-group">
             <label>ID терминала (TRM-####)</label>
@@ -3001,30 +2992,20 @@ input:focus {
             <input type="password" id="terminalPassword" placeholder="123456" maxlength="6">
         </div>
         <button class="btn btn-primary" onclick="connectTerminal()">Подключить</button>
-        
-        <div id="terminalInfo" class="terminal-info">
-            <h3 style="margin-bottom: 10px;">Информация о терминале</h3>
-            <div class="info-row">
-                <span class="info-label">ID:</span>
-                <span class="info-value" id="infoId">-</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Состояние:</span>
-                <span class="info-value" id="infoState">-</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Сумма:</span>
-                <span class="info-value" id="infoAmount">-</span>
-            </div>
-        </div>
     </div>
     
-    <div class="section">
-        <h2>💰 Отправить оплату</h2>
-        <div class="form-group">
-            <label>ID терминала</label>
-            <input type="text" id="paymentTerminalId" placeholder="TRM-1234" maxlength="8">
+    <!-- Секция управления (показывается после подключения) -->
+    <div id="controlSection" class="section hidden">
+        <div class="terminal-info">
+            <h3 style="margin-bottom: 15px;">📱 Подключенный терминал</h3>
+            <div class="info-row">
+                <span class="info-label">ID:</span>
+                <span class="info-value" id="connectedId">-</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="disconnectTerminal()" style="margin-top: 15px; padding: 8px 16px; font-size: 13px;">Отключить терминал</button>
         </div>
+        
+        <h2>💰 Отправить оплату</h2>
         <div class="form-group">
             <label>Сумма оплаты (₽)</label>
             <input type="number" id="paymentAmount" placeholder="100" min="1">
@@ -3036,14 +3017,8 @@ input:focus {
             </div>
         </div>
         <button class="btn btn-primary" onclick="sendPayment()">Отправить оплату</button>
-    </div>
-    
-    <div class="section">
-        <h2>✅ Управление оплатой</h2>
-        <div class="form-group">
-            <label>ID терминала</label>
-            <input type="text" id="controlTerminalId" placeholder="TRM-1234" maxlength="8">
-        </div>
+        
+        <h2 style="margin-top: 30px;">✅ Управление оплатой</h2>
         <button class="btn btn-success" onclick="confirmPayment()">✅ Подтвердить оплату</button>
         <button class="btn btn-danger" onclick="cancelPayment()">❌ Отменить оплату</button>
     </div>
@@ -3051,6 +3026,19 @@ input:focus {
 
 <script>
 let currentTerminal = null;
+
+// Загружаем сохраненный терминал при загрузке страницы
+window.onload = function() {
+    const saved = localStorage.getItem('connectedTerminal');
+    if (saved) {
+        try {
+            currentTerminal = JSON.parse(saved);
+            showControlSection();
+        } catch (e) {
+            localStorage.removeItem('connectedTerminal');
+        }
+    }
+};
 
 function showMessage(text, type) {
     const msg = document.getElementById('message');
@@ -3061,6 +3049,17 @@ function showMessage(text, type) {
 
 function setAmount(amount) {
     document.getElementById('paymentAmount').value = amount;
+}
+
+function showControlSection() {
+    document.getElementById('connectSection').classList.add('hidden');
+    document.getElementById('controlSection').classList.remove('hidden');
+    document.getElementById('connectedId').textContent = currentTerminal.id;
+}
+
+function showConnectSection() {
+    document.getElementById('connectSection').classList.remove('hidden');
+    document.getElementById('controlSection').classList.add('hidden');
 }
 
 async function connectTerminal() {
@@ -3093,17 +3092,12 @@ async function connectTerminal() {
         
         if (res.ok && data.session_id) {
             currentTerminal = {id: id, password: password, session: data.session_id};
+            
+            // Сохраняем в localStorage
+            localStorage.setItem('connectedTerminal', JSON.stringify(currentTerminal));
+            
             showMessage('Терминал успешно подключен!', 'success');
-            
-            // Показываем информацию
-            document.getElementById('infoId').textContent = id;
-            document.getElementById('infoState').textContent = 'Подключен';
-            document.getElementById('infoAmount').textContent = '0 ₽';
-            document.getElementById('terminalInfo').classList.add('active');
-            
-            // Автозаполнение
-            document.getElementById('paymentTerminalId').value = id;
-            document.getElementById('controlTerminalId').value = id;
+            showControlSection();
         } else {
             showMessage('Неверный ID или пароль', 'error');
         }
@@ -3112,12 +3106,25 @@ async function connectTerminal() {
     }
 }
 
+function disconnectTerminal() {
+    if (confirm('Отключить терминал?')) {
+        currentTerminal = null;
+        localStorage.removeItem('connectedTerminal');
+        showMessage('Терминал отключен', 'success');
+        showConnectSection();
+    }
+}
+
 async function sendPayment() {
-    const terminal = document.getElementById('paymentTerminalId').value.trim();
+    if (!currentTerminal) {
+        showMessage('Сначала подключите терминал', 'error');
+        return;
+    }
+    
     const amount = document.getElementById('paymentAmount').value;
     
-    if (!terminal || !amount) {
-        showMessage('Укажите ID терминала и сумму', 'error');
+    if (!amount) {
+        showMessage('Укажите сумму', 'error');
         return;
     }
     
@@ -3126,7 +3133,7 @@ async function sendPayment() {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                terminal_id: terminal,
+                terminal_id: currentTerminal.id,
                 state: 'pay',
                 data: {amount: amount}
             })
@@ -3143,10 +3150,8 @@ async function sendPayment() {
 }
 
 async function confirmPayment() {
-    const terminal = document.getElementById('controlTerminalId').value.trim();
-    
-    if (!terminal) {
-        showMessage('Укажите ID терминала', 'error');
+    if (!currentTerminal) {
+        showMessage('Сначала подключите терминал', 'error');
         return;
     }
     
@@ -3155,7 +3160,7 @@ async function confirmPayment() {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                terminal_id: terminal,
+                terminal_id: currentTerminal.id,
                 approved: true
             })
         });
@@ -3171,10 +3176,8 @@ async function confirmPayment() {
 }
 
 async function cancelPayment() {
-    const terminal = document.getElementById('controlTerminalId').value.trim();
-    
-    if (!terminal) {
-        showMessage('Укажите ID терминала', 'error');
+    if (!currentTerminal) {
+        showMessage('Сначала подключите терминал', 'error');
         return;
     }
     
@@ -3183,7 +3186,7 @@ async function cancelPayment() {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                terminal_id: terminal,
+                terminal_id: currentTerminal.id,
                 approved: false
             })
         });
