@@ -673,9 +673,9 @@ ADMIN_USERNAME = "@romancev228"
 
 # Сайты для мониторинга
 MONITORED_SITES = [
-    {'name': 'API Server', 'url': 'https://sberpos-api.onrender.com/health'},
-    {'name': 'Web Server', 'url': 'https://sberpos-web.onrender.com/'},
-    {'name': 'Cabinet', 'url': 'https://sberpos-api.onrender.com/cabinet'},
+    {'name': 'API Server', 'url': 'https://sberpos-api.onrender.com'},
+    {'name': 'Support Bot', 'url': 'https://sberpos-support-bot.onrender.com'},
+    {'name': 'Web Server', 'url': 'https://sberpos-web.onrender.com'},
 ]
 
 # Состояние мониторинга
