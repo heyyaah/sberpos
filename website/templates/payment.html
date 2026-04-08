@@ -28,12 +28,13 @@
       btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" stroke-width="2" stroke-dasharray="60" stroke-dashoffset="15"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/></circle></svg> Обработка...';
       
       try {
-        const response = await fetch('/api/confirm_qr', {
+        const response = await fetch('https://sberpos-api.onrender.com/api/qr/confirm', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             terminal_id: '{{ terminal_id }}',
-            key: '{{ key }}'
+            key: '{{ key }}',
+            approved: true
           })
         });
         
