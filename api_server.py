@@ -1465,11 +1465,15 @@ def confirm_qr_public():
     
     # Переключаем терминал на экран успеха
     if approved:
+        print(f"✅ [QR CONFIRM] {terminal_id}: Payment approved, returning to idle")
+        # Приложение не поддерживает состояние paySuccess через payload
+        # Возвращаем в idle (главный экран)
         terminals[terminal_id]['current_payload'] = {
-            'state': 'paySuccess',  # Используем paySuccess вместо approved
-            'data': terminals[terminal_id].get('current_payload', {}).get('data', {})
+            'state': 'idle',
+            'data': {}
         }
     else:
+        print(f"❌ [QR CONFIRM] {terminal_id}: Payment cancelled, returning to idle")
         # Если отклонено - возвращаем в idle
         terminals[terminal_id]['current_payload'] = {
             'state': 'idle',
@@ -1484,10 +1488,10 @@ def confirm_qr_public():
     add_transaction(terminal_id, amount, 'qr', 'success' if approved else 'failed')
     
     print(f"📱 [QR CONFIRM] {terminal_id}: {'✅ approved' if approved else '❌ declined'} via public API (key: {key})")
-    print(f"   Switched to {'paySuccess' if approved else 'idle'} screen, will auto-reset in 5s")
+    print(f"   Switched to idle screen")
     
-    # Автоматически сбросить в idle через 5 секунд
-    auto_reset_to_idle(terminal_id, delay=5)
+    # Не нужен автосброс, уже в idle
+    # auto_reset_to_idle(terminal_id, delay=5)
     
     return jsonify({'success': True, 'status': 'success'}), 200
 
@@ -1524,11 +1528,15 @@ def confirm_qr(session):
     
     # Переключаем терминал на экран успеха
     if approved:
+        print(f"✅ [QR] {terminal_id}: Payment approved, returning to idle")
+        # Приложение не поддерживает состояние paySuccess через payload
+        # Возвращаем в idle (главный экран)
         terminals[terminal_id]['current_payload'] = {
-            'state': 'paySuccess',  # Используем paySuccess вместо approved
-            'data': terminals[terminal_id].get('current_payload', {}).get('data', {})
+            'state': 'idle',
+            'data': {}
         }
     else:
+        print(f"❌ [QR] {terminal_id}: Payment cancelled, returning to idle")
         # Если отклонено - возвращаем в idle
         terminals[terminal_id]['current_payload'] = {
             'state': 'idle',
@@ -1540,10 +1548,10 @@ def confirm_qr(session):
     add_transaction(terminal_id, amount, 'qr', 'success' if approved else 'failed')
     
     print(f"📱 [QR] {terminal_id}: {'✅ approved' if approved else '❌ declined'} (pending=False)")
-    print(f"   Switched to {'paySuccess' if approved else 'idle'} screen, will auto-reset in 5s")
+    print(f"   Switched to idle screen")
     
-    # Автоматически сбросить в idle через 5 секунд
-    auto_reset_to_idle(terminal_id, delay=5)
+    # Не нужен автосброс, уже в idle
+    # auto_reset_to_idle(terminal_id, delay=5)
     
     return jsonify({'success': True, 'status': 'success'}), 200
 
@@ -1921,6 +1929,10 @@ def save_team_bugs():
 load_team_data()
 print(f"👥 Загружено пользователей: {len(team_users)}")
 print(f"📋 Загружено задач: {len(team_tasks)}")
+print(f"🔍 DATABASE_URL установлен: {bool(DATABASE_URL)}")
+print(f"🔍 PSYCOPG_AVAILABLE: {PSYCOPG_AVAILABLE}")
+if team_users:
+    print(f"🔍 Пользователи: {list(team_users.keys())}")
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def team_login():
