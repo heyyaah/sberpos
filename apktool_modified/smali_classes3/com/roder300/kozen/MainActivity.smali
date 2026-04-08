@@ -4239,6 +4239,36 @@
     goto/16 :goto_5
 
     .line 844
+    :sswitch_5
+    const-string v0, "paySuccess"
+
+    invoke-virtual {p1, v0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+
+    move-result v0
+
+    if-nez v0, :cond_paySuccess
+
+    move-object v5, p0
+
+    goto/16 :goto_4
+
+    .line 920
+    :cond_paySuccess
+    const-string v0, "PayloadHandler"
+
+    const-string v1, "Received paySuccess state, showing success screen"
+
+    invoke-static {v0, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
+
+    .line 921
+    invoke-virtual {p0}, Lcom/roder300/kozen/MainActivity;->showPayScreenSuccess()V
+
+    .line 922
+    move-object v5, p0
+
+    goto/16 :goto_5
+
+    .line 844
     :sswitch_3
     const-string v0, "idle"
 
@@ -4728,6 +4758,7 @@
         0x313fd4 -> :sswitch_3
         0x36452d -> :sswitch_2
         0xe62bf81 -> :sswitch_1
+        0x1b6b9a3b -> :sswitch_5
         0x6206e3cf -> :sswitch_0
     .end sparse-switch
 .end method
