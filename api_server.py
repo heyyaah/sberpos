@@ -1457,7 +1457,7 @@ def confirm_qr_public():
     # Переключаем терминал на экран успеха
     if approved:
         terminals[terminal_id]['current_payload'] = {
-            'state': 'approved',
+            'state': 'paySuccess',  # Используем paySuccess вместо approved
             'data': terminals[terminal_id].get('current_payload', {}).get('data', {})
         }
     else:
@@ -1475,7 +1475,7 @@ def confirm_qr_public():
     add_transaction(terminal_id, amount, 'qr', 'success' if approved else 'failed')
     
     print(f"📱 [QR CONFIRM] {terminal_id}: {'✅ approved' if approved else '❌ declined'} via public API (key: {key})")
-    print(f"   Switched to {'approved' if approved else 'idle'} screen, will auto-reset in 5s")
+    print(f"   Switched to {'paySuccess' if approved else 'idle'} screen, will auto-reset in 5s")
     
     # Автоматически сбросить в idle через 5 секунд
     auto_reset_to_idle(terminal_id, delay=5)
@@ -1516,7 +1516,7 @@ def confirm_qr(session):
     # Переключаем терминал на экран успеха
     if approved:
         terminals[terminal_id]['current_payload'] = {
-            'state': 'approved',
+            'state': 'paySuccess',  # Используем paySuccess вместо approved
             'data': terminals[terminal_id].get('current_payload', {}).get('data', {})
         }
     else:
@@ -1531,7 +1531,7 @@ def confirm_qr(session):
     add_transaction(terminal_id, amount, 'qr', 'success' if approved else 'failed')
     
     print(f"📱 [QR] {terminal_id}: {'✅ approved' if approved else '❌ declined'} (pending=False)")
-    print(f"   Switched to {'approved' if approved else 'idle'} screen, will auto-reset in 5s")
+    print(f"   Switched to {'paySuccess' if approved else 'idle'} screen, will auto-reset in 5s")
     
     # Автоматически сбросить в idle через 5 секунд
     auto_reset_to_idle(terminal_id, delay=5)
