@@ -2836,6 +2836,379 @@ def team_logout():
     response.set_cookie('team_session', '', max_age=0)
     return response
 
+# ===== КАБИНЕТ УПРАВЛЕНИЯ ТЕРМИНАЛАМИ =====
+
+@app.route('/cabinet')
+def cabinet():
+    """Простой кабинет для управления терминалами и оплатами"""
+    
+    # Получаем список терминалов
+    terminals_list = []
+    for tid, tdata in terminals.items():
+        terminals_list.append({
+            'id': tid,
+            'password': tdata.get('password', ''),
+            'qr_password': tdata.get('qr_password', ''),
+            'state': tdata.get('current_payload', {}).get('state', 'idle'),
+            'amount': tdata.get('current_payload', {}).get('data', {}).get('amount', '0')
+        })
+    
+    html = '''<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Кабинет управления терминалами</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+.container { max-width: 1200px; margin: 0 auto; }
+.header {
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    margin-bottom: 30px;
+}
+h1 { color: #333; font-size: 28px; margin-bottom: 10px; }
+.subtitle { color: #666; font-size: 14px; }
+.section {
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    margin-bottom: 20px;
+}
+h2 { color: #333; margin-bottom: 20px; font-size: 20px; }
+.form-group { margin-bottom: 15px; }
+label { display: block; color: #555; font-weight: 600; margin-bottom: 5px; font-size: 14px; }
+input, select {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border 0.3s;
+}
+input:focus, select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+.btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    margin-right: 10px;
+    margin-top: 10px;
+}
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); }
+.btn-success {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    color: white;
+}
+.btn-success:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(56, 239, 125, 0.4); }
+.btn-danger {
+    background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+    color: white;
+}
+.btn-danger:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(235, 51, 73, 0.4); }
+.btn-warning {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+}
+.btn-warning:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(245, 87, 108, 0.4); }
+.terminals-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+.terminal-card {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    padding: 20px;
+    border-radius: 12px;
+    border: 2px solid #e0e0e0;
+}
+.terminal-id {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 10px;
+}
+.terminal-info {
+    font-size: 13px;
+    color: #666;
+    margin: 5px 0;
+}
+.state-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 10px;
+}
+.state-idle { background: #e3f2fd; color: #1976d2; }
+.state-pay { background: #fff3e0; color: #f57c00; }
+.state-payPending { background: #fce4ec; color: #c2185b; }
+.state-paySuccess { background: #e8f5e9; color: #388e3c; }
+.message {
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+.message-success { background: #e8f5e9; color: #2e7d32; border-left: 4px solid #4caf50; }
+.message-error { background: #ffebee; color: #c62828; border-left: 4px solid #f44336; }
+.quick-amounts {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+.quick-amount {
+    padding: 8px 16px;
+    background: #f5f5f5;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s;
+}
+.quick-amount:hover {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
+}
+</style>
+</head><body>
+<div class="container">
+    <div class="header">
+        <h1>💳 Кабинет управления терминалами</h1>
+        <p class="subtitle">Управление терминалами и оплатами SberPOS</p>
+    </div>
+    
+    <div id="message"></div>
+    
+    <div class="section">
+        <h2>➕ Добавить терминал</h2>
+        <div class="form-group">
+            <label>ID терминала (TRM-####)</label>
+            <input type="text" id="newTerminalId" placeholder="TRM-1234" maxlength="8">
+        </div>
+        <div class="form-group">
+            <label>Пароль (6 цифр)</label>
+            <input type="text" id="newTerminalPassword" placeholder="123456" maxlength="6">
+        </div>
+        <button class="btn btn-primary" onclick="addTerminal()">Добавить терминал</button>
+    </div>
+    
+    <div class="section">
+        <h2>💰 Отправить оплату</h2>
+        <div class="form-group">
+            <label>Выберите терминал</label>
+            <select id="paymentTerminal">
+                <option value="">-- Выберите терминал --</option>
+                ''' + ''.join([f'<option value="{t["id"]}">{t["id"]}</option>' for t in terminals_list]) + '''
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Сумма оплаты (₽)</label>
+            <input type="number" id="paymentAmount" placeholder="100" min="1">
+            <div class="quick-amounts">
+                <div class="quick-amount" onclick="setAmount(100)">100 ₽</div>
+                <div class="quick-amount" onclick="setAmount(500)">500 ₽</div>
+                <div class="quick-amount" onclick="setAmount(1000)">1000 ₽</div>
+                <div class="quick-amount" onclick="setAmount(5000)">5000 ₽</div>
+            </div>
+        </div>
+        <button class="btn btn-primary" onclick="sendPayment()">Отправить оплату</button>
+    </div>
+    
+    <div class="section">
+        <h2>✅ Управление оплатой</h2>
+        <div class="form-group">
+            <label>Выберите терминал</label>
+            <select id="controlTerminal">
+                <option value="">-- Выберите терминал --</option>
+                ''' + ''.join([f'<option value="{t["id"]}">{t["id"]} ({t["state"]})</option>' for t in terminals_list]) + '''
+            </select>
+        </div>
+        <button class="btn btn-success" onclick="confirmPayment()">✅ Подтвердить оплату</button>
+        <button class="btn btn-danger" onclick="cancelPayment()">❌ Отменить оплату</button>
+    </div>
+    
+    <div class="section">
+        <h2>📱 Терминалы (''' + str(len(terminals_list)) + ''')</h2>
+        <div class="terminals-grid">
+            ''' + ''.join([f'''
+            <div class="terminal-card">
+                <div class="terminal-id">{t["id"]}</div>
+                <div class="terminal-info">🔑 Пароль: {t["password"]}</div>
+                <div class="terminal-info">📱 QR пароль: {t["qr_password"]}</div>
+                <div class="terminal-info">💰 Сумма: {t["amount"]} ₽</div>
+                <span class="state-badge state-{t["state"]}">{t["state"]}</span>
+            </div>
+            ''' for t in terminals_list]) + '''
+        </div>
+    </div>
+</div>
+
+<script>
+function showMessage(text, type) {
+    const msg = document.getElementById('message');
+    msg.className = 'message message-' + type;
+    msg.textContent = text;
+    setTimeout(() => msg.textContent = '', 5000);
+}
+
+function setAmount(amount) {
+    document.getElementById('paymentAmount').value = amount;
+}
+
+async function addTerminal() {
+    const id = document.getElementById('newTerminalId').value.trim();
+    const password = document.getElementById('newTerminalPassword').value.trim();
+    
+    if (!id || !password) {
+        showMessage('Заполните все поля', 'error');
+        return;
+    }
+    
+    if (!id.match(/^TRM-\\d{4}$/)) {
+        showMessage('ID должен быть в формате TRM-####', 'error');
+        return;
+    }
+    
+    if (!password.match(/^\\d{6}$/)) {
+        showMessage('Пароль должен содержать 6 цифр', 'error');
+        return;
+    }
+    
+    try {
+        const res = await fetch('/register', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({terminal_id: id, password: password})
+        });
+        const data = await res.json();
+        
+        if (res.ok) {
+            showMessage('Терминал успешно добавлен!', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMessage(data.error || 'Ошибка добавления', 'error');
+        }
+    } catch (e) {
+        showMessage('Ошибка соединения', 'error');
+    }
+}
+
+async function sendPayment() {
+    const terminal = document.getElementById('paymentTerminal').value;
+    const amount = document.getElementById('paymentAmount').value;
+    
+    if (!terminal || !amount) {
+        showMessage('Выберите терминал и укажите сумму', 'error');
+        return;
+    }
+    
+    try {
+        const res = await fetch('/admin/set_payload', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                terminal_id: terminal,
+                state: 'pay',
+                data: {amount: amount}
+            })
+        });
+        
+        if (res.ok) {
+            showMessage('Оплата отправлена на терминал!', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMessage('Ошибка отправки оплаты', 'error');
+        }
+    } catch (e) {
+        showMessage('Ошибка соединения', 'error');
+    }
+}
+
+async function confirmPayment() {
+    const terminal = document.getElementById('controlTerminal').value;
+    
+    if (!terminal) {
+        showMessage('Выберите терминал', 'error');
+        return;
+    }
+    
+    try {
+        const res = await fetch('/admin/confirm_qr', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                terminal_id: terminal,
+                approved: true
+            })
+        });
+        
+        if (res.ok) {
+            showMessage('Оплата подтверждена!', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMessage('Ошибка подтверждения', 'error');
+        }
+    } catch (e) {
+        showMessage('Ошибка соединения', 'error');
+    }
+}
+
+async function cancelPayment() {
+    const terminal = document.getElementById('controlTerminal').value;
+    
+    if (!terminal) {
+        showMessage('Выберите терминал', 'error');
+        return;
+    }
+    
+    try {
+        const res = await fetch('/admin/confirm_qr', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                terminal_id: terminal,
+                approved: false
+            })
+        });
+        
+        if (res.ok) {
+            showMessage('Оплата отменена!', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMessage('Ошибка отмены', 'error');
+        }
+    } catch (e) {
+        showMessage('Ошибка соединения', 'error');
+    }
+}
+</script>
+</body></html>'''
+    
+    return html
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     print(f"🚀 API Server запущен на порту {port}")
