@@ -1454,6 +1454,19 @@ def confirm_qr_public():
         'approved': approved
     }
     
+    # Переключаем терминал на экран успеха
+    if approved:
+        terminals[terminal_id]['current_payload'] = {
+            'state': 'approved',
+            'data': terminals[terminal_id].get('current_payload', {}).get('data', {})
+        }
+    else:
+        # Если отклонено - возвращаем в idle
+        terminals[terminal_id]['current_payload'] = {
+            'state': 'idle',
+            'data': {}
+        }
+    
     # Инвалидируем ключ (генерируем новый чтобы старый больше не работал)
     terminals[terminal_id]['qr_password'] = ''.join([str(random.randint(0, 9)) for _ in range(6)])
     
@@ -1462,7 +1475,7 @@ def confirm_qr_public():
     add_transaction(terminal_id, amount, 'qr', 'success' if approved else 'failed')
     
     print(f"📱 [QR CONFIRM] {terminal_id}: {'✅ approved' if approved else '❌ declined'} via public API (key: {key})")
-    print(f"   QR status will auto-reset to idle in 5s")
+    print(f"   Switched to {'approved' if approved else 'idle'} screen, will auto-reset in 5s")
     
     # Автоматически сбросить в idle через 5 секунд
     auto_reset_to_idle(terminal_id, delay=5)
