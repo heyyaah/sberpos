@@ -173,10 +173,19 @@ def init_db():
             )
         ''')
         
+        # Таблица данных команды (team_users, team_tasks, etc.)
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS team_data (
+                key VARCHAR(50) PRIMARY KEY,
+                data JSONB NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         conn.commit()
         cur.close()
         conn.close()
-        print("✅ База данных инициализирована (10 таблиц)")
+        print("✅ База данных инициализирована (11 таблиц)")
     except Exception as e:
         print(f"❌ Ошибка инициализации БД: {e}")
 
@@ -1811,12 +1820,41 @@ BUGS_FILE = 'team_bugs.json'
 
 def load_team_data():
     global team_users, team_tasks, team_news, team_shifts, team_bugs
-    try:
-        with open(TEAM_FILE, 'r', encoding='utf-8') as f:
-            team_users = json.load(f)
-    except:
-        team_users = {'romancev228': {'password': 'lolkek123', 'role': 'owner', 'full_name': 'Романцев', 'created_at': datetime.now().isoformat()}}
-        save_team_users()
+    
+    # Загружаем team_users из PostgreSQL
+    if DATABASE_URL and PSYCOPG_AVAILABLE:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT data FROM team_data WHERE key = 'team_users'")
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            if row:
+                team_users = row[0]
+                print(f"👥 Loaded {len(team_users)} team users from PostgreSQL")
+            else:
+                # Создаем дефолтного пользователя
+                team_users = {'romancev228': {'password': 'lolkek123', 'role': 'owner', 'full_name': 'Романцев', 'created_at': datetime.now().isoformat()}}
+                save_team_users()
+        except Exception as e:
+            print(f"❌ Error loading team users from DB: {e}")
+            # Fallback на файл
+            try:
+                with open(TEAM_FILE, 'r', encoding='utf-8') as f:
+                    team_users = json.load(f)
+            except:
+                team_users = {'romancev228': {'password': 'lolkek123', 'role': 'owner', 'full_name': 'Романцев', 'created_at': datetime.now().isoformat()}}
+                save_team_users()
+    else:
+        # Загружаем из файла
+        try:
+            with open(TEAM_FILE, 'r', encoding='utf-8') as f:
+                team_users = json.load(f)
+        except:
+            team_users = {'romancev228': {'password': 'lolkek123', 'role': 'owner', 'full_name': 'Романцев', 'created_at': datetime.now().isoformat()}}
+            save_team_users()
+    
     try:
         with open(TASKS_FILE, 'r', encoding='utf-8') as f:
             team_tasks = json.load(f)
@@ -1840,6 +1878,27 @@ def load_team_data():
         team_bugs = []
 
 def save_team_users():
+    # Сохраняем в PostgreSQL
+    if DATABASE_URL and PSYCOPG_AVAILABLE:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            # Сохраняем как один JSON объект
+            cur.execute('''
+                INSERT INTO team_data (key, data, updated_at)
+                VALUES ('team_users', %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (key) 
+                DO UPDATE SET data = %s, updated_at = CURRENT_TIMESTAMP
+            ''', (Jsonb(team_users), Jsonb(team_users)))
+            conn.commit()
+            cur.close()
+            conn.close()
+            print(f"💾 Saved {len(team_users)} team users to PostgreSQL")
+            return
+        except Exception as e:
+            print(f"❌ Error saving team users to DB: {e}")
+    
+    # Fallback на файл
     with open(TEAM_FILE, 'w', encoding='utf-8') as f:
         json.dump(team_users, f, ensure_ascii=False, indent=2)
 
