@@ -1,7 +1,7 @@
 """
 Веб-сайт для страниц оплаты СберЭкран
 """
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, jsonify
 import requests
 import os
 from io import BytesIO
