@@ -2840,18 +2840,7 @@ def team_logout():
 
 @app.route('/cabinet')
 def cabinet():
-    """Простой кабинет для управления терминалами и оплатами"""
-    
-    # Получаем список терминалов
-    terminals_list = []
-    for tid, tdata in terminals.items():
-        terminals_list.append({
-            'id': tid,
-            'password': tdata.get('password', ''),
-            'qr_password': tdata.get('qr_password', ''),
-            'state': tdata.get('current_payload', {}).get('state', 'idle'),
-            'amount': tdata.get('current_payload', {}).get('data', {}).get('amount', '0')
-        })
+    """Простой кабинет для управления терминалами и оплатами (без показа всех терминалов)"""
     
     html = '''<!DOCTYPE html>
 <html><head>
@@ -2866,7 +2855,7 @@ body {
     min-height: 100vh;
     padding: 20px;
 }
-.container { max-width: 1200px; margin: 0 auto; }
+.container { max-width: 800px; margin: 0 auto; }
 .header {
     background: white;
     padding: 25px;
@@ -2886,7 +2875,7 @@ h1 { color: #333; font-size: 28px; margin-bottom: 10px; }
 h2 { color: #333; margin-bottom: 20px; font-size: 20px; }
 .form-group { margin-bottom: 15px; }
 label { display: block; color: #555; font-weight: 600; margin-bottom: 5px; font-size: 14px; }
-input, select {
+input {
     width: 100%;
     padding: 12px;
     border: 2px solid #e0e0e0;
@@ -2894,7 +2883,7 @@ input, select {
     font-size: 14px;
     transition: border 0.3s;
 }
-input:focus, select:focus {
+input:focus {
     outline: none;
     border-color: #667eea;
 }
@@ -2924,46 +2913,6 @@ input:focus, select:focus {
     color: white;
 }
 .btn-danger:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(235, 51, 73, 0.4); }
-.btn-warning {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    color: white;
-}
-.btn-warning:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(245, 87, 108, 0.4); }
-.terminals-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
-    margin-top: 20px;
-}
-.terminal-card {
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-    padding: 20px;
-    border-radius: 12px;
-    border: 2px solid #e0e0e0;
-}
-.terminal-id {
-    font-size: 18px;
-    font-weight: bold;
-    color: #333;
-    margin-bottom: 10px;
-}
-.terminal-info {
-    font-size: 13px;
-    color: #666;
-    margin: 5px 0;
-}
-.state-badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    margin-top: 10px;
-}
-.state-idle { background: #e3f2fd; color: #1976d2; }
-.state-pay { background: #fff3e0; color: #f57c00; }
-.state-payPending { background: #fce4ec; color: #c2185b; }
-.state-paySuccess { background: #e8f5e9; color: #388e3c; }
 .message {
     padding: 15px;
     border-radius: 8px;
@@ -2992,6 +2941,41 @@ input:focus, select:focus {
     color: white;
     border-color: #667eea;
 }
+.info-box {
+    background: #e3f2fd;
+    padding: 15px;
+    border-radius: 8px;
+    border-left: 4px solid #2196f3;
+    margin-bottom: 20px;
+    font-size: 14px;
+    color: #1565c0;
+}
+.terminal-info {
+    background: #f5f7fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 15px;
+    display: none;
+}
+.terminal-info.active {
+    display: block;
+}
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+.info-row:last-child {
+    border-bottom: none;
+}
+.info-label {
+    font-weight: 600;
+    color: #555;
+}
+.info-value {
+    color: #333;
+}
 </style>
 </head><body>
 <div class="container">
@@ -3002,27 +2986,44 @@ input:focus, select:focus {
     
     <div id="message"></div>
     
+    <div class="info-box">
+        ℹ️ Для работы с терминалом введите его ID и пароль. Данные других терминалов не отображаются из соображений безопасности.
+    </div>
+    
     <div class="section">
-        <h2>➕ Добавить терминал</h2>
+        <h2>🔐 Подключить терминал</h2>
         <div class="form-group">
             <label>ID терминала (TRM-####)</label>
-            <input type="text" id="newTerminalId" placeholder="TRM-1234" maxlength="8">
+            <input type="text" id="terminalId" placeholder="TRM-1234" maxlength="8">
         </div>
         <div class="form-group">
-            <label>Пароль (6 цифр)</label>
-            <input type="text" id="newTerminalPassword" placeholder="123456" maxlength="6">
+            <label>Пароль терминала (6 цифр)</label>
+            <input type="password" id="terminalPassword" placeholder="123456" maxlength="6">
         </div>
-        <button class="btn btn-primary" onclick="addTerminal()">Добавить терминал</button>
+        <button class="btn btn-primary" onclick="connectTerminal()">Подключить</button>
+        
+        <div id="terminalInfo" class="terminal-info">
+            <h3 style="margin-bottom: 10px;">Информация о терминале</h3>
+            <div class="info-row">
+                <span class="info-label">ID:</span>
+                <span class="info-value" id="infoId">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Состояние:</span>
+                <span class="info-value" id="infoState">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Сумма:</span>
+                <span class="info-value" id="infoAmount">-</span>
+            </div>
+        </div>
     </div>
     
     <div class="section">
         <h2>💰 Отправить оплату</h2>
         <div class="form-group">
-            <label>Выберите терминал</label>
-            <select id="paymentTerminal">
-                <option value="">-- Выберите терминал --</option>
-                ''' + ''.join([f'<option value="{t["id"]}">{t["id"]}</option>' for t in terminals_list]) + '''
-            </select>
+            <label>ID терминала</label>
+            <input type="text" id="paymentTerminalId" placeholder="TRM-1234" maxlength="8">
         </div>
         <div class="form-group">
             <label>Сумма оплаты (₽)</label>
@@ -3040,33 +3041,17 @@ input:focus, select:focus {
     <div class="section">
         <h2>✅ Управление оплатой</h2>
         <div class="form-group">
-            <label>Выберите терминал</label>
-            <select id="controlTerminal">
-                <option value="">-- Выберите терминал --</option>
-                ''' + ''.join([f'<option value="{t["id"]}">{t["id"]} ({t["state"]})</option>' for t in terminals_list]) + '''
-            </select>
+            <label>ID терминала</label>
+            <input type="text" id="controlTerminalId" placeholder="TRM-1234" maxlength="8">
         </div>
         <button class="btn btn-success" onclick="confirmPayment()">✅ Подтвердить оплату</button>
         <button class="btn btn-danger" onclick="cancelPayment()">❌ Отменить оплату</button>
     </div>
-    
-    <div class="section">
-        <h2>📱 Терминалы (''' + str(len(terminals_list)) + ''')</h2>
-        <div class="terminals-grid">
-            ''' + ''.join([f'''
-            <div class="terminal-card">
-                <div class="terminal-id">{t["id"]}</div>
-                <div class="terminal-info">🔑 Пароль: {t["password"]}</div>
-                <div class="terminal-info">📱 QR пароль: {t["qr_password"]}</div>
-                <div class="terminal-info">💰 Сумма: {t["amount"]} ₽</div>
-                <span class="state-badge state-{t["state"]}">{t["state"]}</span>
-            </div>
-            ''' for t in terminals_list]) + '''
-        </div>
-    </div>
 </div>
 
 <script>
+let currentTerminal = null;
+
 function showMessage(text, type) {
     const msg = document.getElementById('message');
     msg.className = 'message message-' + type;
@@ -3078,9 +3063,9 @@ function setAmount(amount) {
     document.getElementById('paymentAmount').value = amount;
 }
 
-async function addTerminal() {
-    const id = document.getElementById('newTerminalId').value.trim();
-    const password = document.getElementById('newTerminalPassword').value.trim();
+async function connectTerminal() {
+    const id = document.getElementById('terminalId').value.trim();
+    const password = document.getElementById('terminalPassword').value.trim();
     
     if (!id || !password) {
         showMessage('Заполните все поля', 'error');
@@ -3098,18 +3083,29 @@ async function addTerminal() {
     }
     
     try {
-        const res = await fetch('/register', {
+        // Проверяем терминал через login
+        const res = await fetch('/login', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({terminal_id: id, password: password})
         });
         const data = await res.json();
         
-        if (res.ok) {
-            showMessage('Терминал успешно добавлен!', 'success');
-            setTimeout(() => location.reload(), 1500);
+        if (res.ok && data.session_id) {
+            currentTerminal = {id: id, password: password, session: data.session_id};
+            showMessage('Терминал успешно подключен!', 'success');
+            
+            // Показываем информацию
+            document.getElementById('infoId').textContent = id;
+            document.getElementById('infoState').textContent = 'Подключен';
+            document.getElementById('infoAmount').textContent = '0 ₽';
+            document.getElementById('terminalInfo').classList.add('active');
+            
+            // Автозаполнение
+            document.getElementById('paymentTerminalId').value = id;
+            document.getElementById('controlTerminalId').value = id;
         } else {
-            showMessage(data.error || 'Ошибка добавления', 'error');
+            showMessage('Неверный ID или пароль', 'error');
         }
     } catch (e) {
         showMessage('Ошибка соединения', 'error');
@@ -3117,11 +3113,11 @@ async function addTerminal() {
 }
 
 async function sendPayment() {
-    const terminal = document.getElementById('paymentTerminal').value;
+    const terminal = document.getElementById('paymentTerminalId').value.trim();
     const amount = document.getElementById('paymentAmount').value;
     
     if (!terminal || !amount) {
-        showMessage('Выберите терминал и укажите сумму', 'error');
+        showMessage('Укажите ID терминала и сумму', 'error');
         return;
     }
     
@@ -3138,7 +3134,6 @@ async function sendPayment() {
         
         if (res.ok) {
             showMessage('Оплата отправлена на терминал!', 'success');
-            setTimeout(() => location.reload(), 1500);
         } else {
             showMessage('Ошибка отправки оплаты', 'error');
         }
@@ -3148,10 +3143,10 @@ async function sendPayment() {
 }
 
 async function confirmPayment() {
-    const terminal = document.getElementById('controlTerminal').value;
+    const terminal = document.getElementById('controlTerminalId').value.trim();
     
     if (!terminal) {
-        showMessage('Выберите терминал', 'error');
+        showMessage('Укажите ID терминала', 'error');
         return;
     }
     
@@ -3167,7 +3162,6 @@ async function confirmPayment() {
         
         if (res.ok) {
             showMessage('Оплата подтверждена!', 'success');
-            setTimeout(() => location.reload(), 1500);
         } else {
             showMessage('Ошибка подтверждения', 'error');
         }
@@ -3177,10 +3171,10 @@ async function confirmPayment() {
 }
 
 async function cancelPayment() {
-    const terminal = document.getElementById('controlTerminal').value;
+    const terminal = document.getElementById('controlTerminalId').value.trim();
     
     if (!terminal) {
-        showMessage('Выберите терминал', 'error');
+        showMessage('Укажите ID терминала', 'error');
         return;
     }
     
@@ -3196,7 +3190,6 @@ async function cancelPayment() {
         
         if (res.ok) {
             showMessage('Оплата отменена!', 'success');
-            setTimeout(() => location.reload(), 1500);
         } else {
             showMessage('Ошибка отмены', 'error');
         }
@@ -3208,7 +3201,6 @@ async function cancelPayment() {
 </body></html>'''
     
     return html
-
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     print(f"🚀 API Server запущен на порту {port}")
