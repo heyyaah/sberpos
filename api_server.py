@@ -1513,12 +1513,25 @@ def confirm_qr(session):
         'approved': approved
     }
     
+    # Переключаем терминал на экран успеха
+    if approved:
+        terminals[terminal_id]['current_payload'] = {
+            'state': 'approved',
+            'data': terminals[terminal_id].get('current_payload', {}).get('data', {})
+        }
+    else:
+        # Если отклонено - возвращаем в idle
+        terminals[terminal_id]['current_payload'] = {
+            'state': 'idle',
+            'data': {}
+        }
+    
     # Записываем транзакцию
     amount = terminals[terminal_id].get('current_payload', {}).get('data', {}).get('amount', '0')
     add_transaction(terminal_id, amount, 'qr', 'success' if approved else 'failed')
     
     print(f"📱 [QR] {terminal_id}: {'✅ approved' if approved else '❌ declined'} (pending=False)")
-    print(f"   QR status will auto-reset to idle in 5s")
+    print(f"   Switched to {'approved' if approved else 'idle'} screen, will auto-reset in 5s")
     
     # Автоматически сбросить в idle через 5 секунд
     auto_reset_to_idle(terminal_id, delay=5)
