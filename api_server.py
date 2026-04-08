@@ -36,6 +36,14 @@ except ImportError:
 
 app = Flask(__name__)
 
+# CORS headers для разрешения запросов с sberpos-web
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
+
 # Хранилище данных в памяти
 sessions = {}  # session_id -> {terminal_id, authenticated, csrf_token}
 terminals = {}  # terminal_id -> {password, current_payload, face_confirm_enabled, owner_id}
