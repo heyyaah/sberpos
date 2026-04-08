@@ -666,6 +666,144 @@ def index():
 def health():
     return 'OK', 200
 
+# ===== МОНИТОРИНГ САЙТОВ =====
+
+MONITORING_GROUP_ID = -1003740288667
+ADMIN_USERNAME = "@romancev228"
+
+# Сайты для мониторинга
+MONITORED_SITES = [
+    {'name': 'API Server', 'url': 'https://sberpos-api.onrender.com/health'},
+    {'name': 'Web Server', 'url': 'https://sberpos-web.onrender.com/'},
+    {'name': 'Cabinet', 'url': 'https://sberpos-api.onrender.com/cabinet'},
+]
+
+# Состояние мониторинга
+monitoring_state = {
+    'message_id': None,
+    'last_status': {},
+    'down_sites': set(),
+    'last_alert_time': {}
+}
+
+def ping_site(url: str) -> tuple:
+    """Пингует сайт и возвращает (доступен, время_ответа_мс)"""
+    try:
+        start = time.time()
+        response = requests.get(url, timeout=10)
+        elapsed_ms = int((time.time() - start) * 1000)
+        
+        if response.status_code == 200:
+            return True, elapsed_ms
+        else:
+            return False, 0
+    except Exception as e:
+        return False, 0
+
+def get_status_emoji(is_up: bool) -> str:
+    return "🟢" if is_up else "🔴"
+
+def format_monitoring_message() -> str:
+    """Форматирует сообщение со статусом всех сайтов"""
+    lines = ["📊 Статус сайтов SberPOS\n"]
+    
+    all_up = True
+    for site in MONITORED_SITES:
+        is_up, ping_ms = ping_site(site['url'])
+        monitoring_state['last_status'][site['name']] = is_up
+        
+        emoji = get_status_emoji(is_up)
+        status_text = f"{ping_ms}ms" if is_up else "НЕДОСТУПЕН"
+        lines.append(f"{emoji} {site['name']}: {status_text}")
+        
+        if not is_up:
+            all_up = False
+    
+    lines.append(f"\n🕐 Обновлено: {time.strftime('%H:%M:%S')}")
+    
+    if not all_up:
+        lines.append(f"\n⚠️ Внимание {ADMIN_USERNAME}! Есть недоступные сайты!")
+    
+    return "\n".join(lines)
+
+def check_and_alert_down_sites():
+    """Проверяет сайты и отправляет алерты если что-то упало"""
+    current_down = set()
+    
+    for site in MONITORED_SITES:
+        is_up, _ = ping_site(site['url'])
+        
+        if not is_up:
+            current_down.add(site['name'])
+            
+            # Если сайт только что упал (не был в списке упавших)
+            if site['name'] not in monitoring_state['down_sites']:
+                # Отправляем алерт
+                alert_msg = f"🚨 АЛЕРТ {ADMIN_USERNAME}!\n\n"
+                alert_msg += f"Сайт {site['name']} недоступен!\n"
+                alert_msg += f"URL: {site['url']}\n"
+                alert_msg += f"Время: {time.strftime('%H:%M:%S')}"
+                
+                try:
+                    bot.send_message(MONITORING_GROUP_ID, alert_msg)
+                    monitoring_state['last_alert_time'][site['name']] = time.time()
+                except Exception as e:
+                    print(f"❌ Error sending alert: {e}")
+    
+    # Проверяем восстановленные сайты
+    recovered = monitoring_state['down_sites'] - current_down
+    for site_name in recovered:
+        recovery_msg = f"✅ Сайт {site_name} восстановлен!\n"
+        recovery_msg += f"Время: {time.strftime('%H:%M:%S')}"
+        
+        try:
+            bot.send_message(MONITORING_GROUP_ID, recovery_msg)
+        except Exception as e:
+            print(f"❌ Error sending recovery message: {e}")
+    
+    monitoring_state['down_sites'] = current_down
+
+def update_monitoring_message():
+    """Обновляет сообщение с мониторингом каждую минуту"""
+    while True:
+        try:
+            # Проверяем сайты и отправляем алерты
+            check_and_alert_down_sites()
+            
+            # Форматируем сообщение
+            message_text = format_monitoring_message()
+            
+            # Обновляем или создаем сообщение
+            if monitoring_state['message_id']:
+                try:
+                    bot.edit_message_text(
+                        chat_id=MONITORING_GROUP_ID,
+                        message_id=monitoring_state['message_id'],
+                        text=message_text
+                    )
+                except Exception as e:
+                    # Если не удалось отредактировать, создаем новое
+                    print(f"⚠️ Could not edit message: {e}, creating new one")
+                    monitoring_state['message_id'] = None
+            
+            if not monitoring_state['message_id']:
+                try:
+                    msg = bot.send_message(MONITORING_GROUP_ID, message_text)
+                    monitoring_state['message_id'] = msg.message_id
+                except Exception as e:
+                    print(f"❌ Error sending monitoring message: {e}")
+        
+        except Exception as e:
+            print(f"❌ Monitoring error: {e}")
+        
+        # Ждем 60 секунд до следующего обновления
+        time.sleep(60)
+
+# Запускаем мониторинг в отдельном потоке
+monitoring_thread = threading.Thread(target=update_monitoring_message, daemon=True)
+monitoring_thread.start()
+print("✅ Monitoring thread started")
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     webhook_url = os.environ.get('WEBHOOK_URL')
