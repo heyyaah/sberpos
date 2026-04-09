@@ -1463,6 +1463,9 @@ def confirm_qr_public():
     # Помечаем оплату как обработанную
     terminals[terminal_id]['payment_processed'] = True
     
+    # Сохраняем сумму ДО изменения payload
+    current_amount = terminals[terminal_id].get('current_payload', {}).get('data', {}).get('amount', '0')
+    
     # Устанавливаем статус подтверждения QR
     terminals[terminal_id]['qr_status'] = {
         'pending': False,
@@ -1475,7 +1478,7 @@ def confirm_qr_public():
         # Теперь приложение поддерживает состояние paySuccess!
         terminals[terminal_id]['current_payload'] = {
             'state': 'paySuccess',
-            'data': terminals[terminal_id].get('current_payload', {}).get('data', {})
+            'data': {'amount': current_amount}  # Сохраняем сумму
         }
     else:
         print(f"❌ [QR CONFIRM] {terminal_id}: Payment cancelled, returning to idle")
@@ -1489,8 +1492,7 @@ def confirm_qr_public():
     terminals[terminal_id]['qr_password'] = ''.join([str(random.randint(0, 9)) for _ in range(6)])
     
     # Записываем транзакцию
-    amount = terminals[terminal_id].get('current_payload', {}).get('data', {}).get('amount', '0')
-    add_transaction(terminal_id, amount, 'qr', 'success' if approved else 'failed')
+    add_transaction(terminal_id, current_amount, 'qr', 'success' if approved else 'failed')
     
     print(f"📱 [QR CONFIRM] {terminal_id}: {'✅ approved' if approved else '❌ declined'} via public API (key: {key})")
     print(f"   Switched to {'paySuccess' if approved else 'idle'} screen, will auto-reset in 5s")
@@ -1525,6 +1527,9 @@ def confirm_qr(session):
     # Помечаем оплату как обработанную
     terminals[terminal_id]['payment_processed'] = True
     
+    # Сохраняем сумму ДО изменения payload
+    current_amount = terminals[terminal_id].get('current_payload', {}).get('data', {}).get('amount', '0')
+    
     # Устанавливаем статус подтверждения QR
     terminals[terminal_id]['qr_status'] = {
         'pending': False,
@@ -1537,7 +1542,7 @@ def confirm_qr(session):
         # Теперь приложение поддерживает состояние paySuccess!
         terminals[terminal_id]['current_payload'] = {
             'state': 'paySuccess',
-            'data': terminals[terminal_id].get('current_payload', {}).get('data', {})
+            'data': {'amount': current_amount}  # Сохраняем сумму
         }
     else:
         print(f"❌ [QR] {terminal_id}: Payment cancelled, returning to idle")
@@ -1548,8 +1553,7 @@ def confirm_qr(session):
         }
     
     # Записываем транзакцию
-    amount = terminals[terminal_id].get('current_payload', {}).get('data', {}).get('amount', '0')
-    add_transaction(terminal_id, amount, 'qr', 'success' if approved else 'failed')
+    add_transaction(terminal_id, current_amount, 'qr', 'success' if approved else 'failed')
     
     print(f"📱 [QR] {terminal_id}: {'✅ approved' if approved else '❌ declined'} (pending=False)")
     print(f"   Switched to {'paySuccess' if approved else 'idle'} screen, will auto-reset in 5s")
