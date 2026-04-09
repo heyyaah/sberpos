@@ -670,8 +670,15 @@ def card_status():
                         }
                         term['payment_processed'] = True
                         term['bypass_timer_started'] = False
+                        
+                        # Переключаем на экран успеха
+                        term['current_payload'] = {
+                            'state': 'paySuccess',
+                            'data': {'amount': current_amount}
+                        }
+                        
                         add_transaction(terminal_id, current_amount, 'card', 'success')
-                        print(f"💳 [BYPASS] {terminal_id}: Auto-approved payment after 3s (bypass enabled)")
+                        print(f"💳 [BYPASS] {terminal_id}: Auto-approved payment after 3s (bypass enabled), showing success screen")
                         # Автоматически сбросить в idle через 5 секунд
                         auto_reset_to_idle(terminal_id, delay=5)
                     else:
@@ -1081,6 +1088,9 @@ def confirm_card(session):
     # Помечаем оплату как обработанную
     terminals[terminal_id]['payment_processed'] = True
     
+    # Сохраняем сумму ДО изменения payload
+    current_amount = terminals[terminal_id].get('current_payload', {}).get('data', {}).get('amount', '0')
+    
     # Устанавливаем статус подтверждения карты
     terminals[terminal_id]['card_status'] = {
         'pending': False,
@@ -1088,12 +1098,16 @@ def confirm_card(session):
     }
     
     # Записываем транзакцию
-    amount = terminals[terminal_id].get('current_payload', {}).get('data', {}).get('amount', '0')
-    add_transaction(terminal_id, amount, 'card', 'success' if approved else 'failed')
+    add_transaction(terminal_id, current_amount, 'card', 'success' if approved else 'failed')
     
     if approved:
-        print(f"💳 [CARD] {terminal_id}: ✅ approved (pending=False)")
-        print(f"   Card status will auto-reset to idle in 5s")
+        print(f"💳 [CARD] {terminal_id}: ✅ approved, showing success screen")
+        # Переключаем на экран успеха
+        terminals[terminal_id]['current_payload'] = {
+            'state': 'paySuccess',
+            'data': {'amount': current_amount}
+        }
+        print(f"   Switched to paySuccess screen, will auto-reset to idle in 5s")
         # Автоматически сбросить в idle через 5 секунд
         auto_reset_to_idle(terminal_id, delay=5)
     else:
@@ -1102,7 +1116,7 @@ def confirm_card(session):
         terminals[terminal_id]['current_payload'] = {
             'state': 'paymentFailed',
             'data': {
-                'amount': amount,
+                'amount': current_amount,
                 'content': 'Оплата отклонена',
                 'buttons': ''
             }
@@ -1137,6 +1151,9 @@ def confirm_face(session):
     # Помечаем оплату как обработанную
     terminals[terminal_id]['payment_processed'] = True
     
+    # Сохраняем сумму ДО изменения payload
+    current_amount = terminals[terminal_id].get('current_payload', {}).get('data', {}).get('amount', '0')
+    
     # Устанавливаем статус подтверждения карты (face использует ту же логику)
     terminals[terminal_id]['card_status'] = {
         'pending': False,
@@ -1144,12 +1161,16 @@ def confirm_face(session):
     }
     
     # Записываем транзакцию
-    amount = terminals[terminal_id].get('current_payload', {}).get('data', {}).get('amount', '0')
-    add_transaction(terminal_id, amount, 'face', 'success' if approved else 'failed')
+    add_transaction(terminal_id, current_amount, 'face', 'success' if approved else 'failed')
     
     if approved:
-        print(f"🙂 [FACE] {terminal_id}: ✅ approved (pending=False)")
-        print(f"   Card status will auto-reset to idle in 5s")
+        print(f"🙂 [FACE] {terminal_id}: ✅ approved, showing success screen")
+        # Переключаем на экран успеха
+        terminals[terminal_id]['current_payload'] = {
+            'state': 'paySuccess',
+            'data': {'amount': current_amount}
+        }
+        print(f"   Switched to paySuccess screen, will auto-reset to idle in 5s")
         # Автоматически сбросить в idle через 5 секунд
         auto_reset_to_idle(terminal_id, delay=5)
     else:
@@ -1158,7 +1179,7 @@ def confirm_face(session):
         terminals[terminal_id]['current_payload'] = {
             'state': 'paymentFailed',
             'data': {
-                'amount': amount,
+                'amount': current_amount,
                 'content': 'Оплата отклонена',
                 'buttons': ''
             }
@@ -1637,8 +1658,15 @@ def qr_initiate():
                         'approved': True
                     }
                     term['payment_processed'] = True
+                    
+                    # Переключаем на экран успеха
+                    term['current_payload'] = {
+                        'state': 'paySuccess',
+                        'data': {'amount': current_amount}
+                    }
+                    
                     add_transaction(terminal_id, current_amount, 'card', 'success')
-                    print(f"💳 [BYPASS] {terminal_id}: Auto-approved payment after 3s (bypass enabled)")
+                    print(f"💳 [BYPASS] {terminal_id}: Auto-approved payment after 3s (bypass enabled), showing success screen")
                     # Автоматически сбросить в idle через 5 секунд
                     auto_reset_to_idle(terminal_id, delay=5)
                 else:
