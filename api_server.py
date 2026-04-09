@@ -576,8 +576,14 @@ def login():
     if request.method == 'GET':
         return 'Login page', 200
     
-    username = request.form.get('username')
-    password = request.form.get('password')
+    # Поддержка и JSON, и form data
+    if request.is_json:
+        data = request.get_json()
+        username = data.get('terminal_id') or data.get('username')
+        password = data.get('password')
+    else:
+        username = request.form.get('username')
+        password = request.form.get('password')
     
     if not username or not password:
         print(f"❌ [LOGIN] Missing credentials")
@@ -589,7 +595,7 @@ def login():
         return jsonify({'error': 'Terminal not found', 'status': 'error'}), 200
     
     if terminal['password'] != password:
-        print(f"❌ [LOGIN] Wrong password for: {username}")
+        print(f"❌ [LOGIN] Wrong password for: {username} (got: {password}, expected: {terminal['password']})")
         return jsonify({'error': 'Invalid password', 'status': 'error'}), 200
     
     # Создаём сессию
@@ -604,7 +610,7 @@ def login():
     
     print(f"✅ [LOGIN] Successful login: {username} (session: {session_id[:8]}...)")
     
-    response = make_response(jsonify({'success': True, 'status': 'success'}))
+    response = make_response(jsonify({'success': True, 'status': 'success', 'session_id': session_id}))
     response.set_cookie('session_id', session_id)
     response.set_cookie('csrf', csrf_token)
     
@@ -1734,9 +1740,9 @@ def check_terminal_public():
     current = terminal.get('current_payload', {})
     state = current.get('state', 'idle')
     amount = current.get('data', {}).get('amount', '0')
-    qr_password = terminal.get('qr_password', '')
+    password = terminal.get('password', '')  # Обычный пароль терминала
     
-    print(f"✅ [TERMINAL CHECK] {terminal_id}: state={state}, qr_password={qr_password}")
+    print(f"✅ [TERMINAL CHECK] {terminal_id}: state={state}, password={password}")
     
     return jsonify({
         'success': True,
@@ -1744,7 +1750,7 @@ def check_terminal_public():
         'terminal_id': terminal_id,
         'state': state,
         'amount': amount,
-        'qr_password': qr_password,
+        'password': password,  # Возвращаем обычный пароль
         'in_payment': state in ['pay', 'payPending']
     }), 200
 
