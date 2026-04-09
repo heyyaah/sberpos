@@ -48,7 +48,13 @@ def payment_page(terminal_id, key):
         
         # Проверяем ключ
         expected_key = data.get('qr_password', '')
+        print(f"🔍 [KEY CHECK] Terminal: {terminal_id}")
+        print(f"   Received key: '{key}' (type: {type(key).__name__}, len: {len(key)})")
+        print(f"   Expected key: '{expected_key}' (type: {type(expected_key).__name__}, len: {len(expected_key)})")
+        print(f"   Match: {key == expected_key}")
+        
         if key != expected_key:
+            print(f"❌ [KEY MISMATCH] {terminal_id}: '{key}' != '{expected_key}'")
             return render_template('bad_key.html'), 403
         
         # Показываем страницу оплаты
