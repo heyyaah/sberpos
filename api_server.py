@@ -882,15 +882,31 @@ def payload_handler():
             return jsonify({'error': 'Unauthorized'}), 401
         
         data = request.json
-        terminal_id = session['terminal_id']
+        
+        # Поддерживаем terminal_id из JSON (для кабинета) или из сессии (для старых клиентов)
+        terminal_id = data.get('terminal_id') or session.get('terminal_id')
+        
+        if not terminal_id:
+            return jsonify({'error': 'Missing terminal_id'}), 400
         
         if terminal_id not in terminals:
             return jsonify({'error': 'Terminal not found'}), 404
         
         state = data.get('state', 'idle')
-        amount = data.get('amount', '0')
-        content = data.get('content', '')
-        buttons = data.get('buttons', '')
+        
+        # Поддерживаем два формата:
+        # 1. Старый: {state: 'pay', amount: '100', content: '', buttons: ''}
+        # 2. Новый: {state: 'pay', data: {amount: '100', content: '', buttons: ''}}
+        if 'data' in data and isinstance(data['data'], dict):
+            # Новый формат - данные в объекте data
+            amount = data['data'].get('amount', '0')
+            content = data['data'].get('content', '')
+            buttons = data['data'].get('buttons', '')
+        else:
+            # Старый формат - данные на верхнем уровне
+            amount = data.get('amount', '0')
+            content = data.get('content', '')
+            buttons = data.get('buttons', '')
         
         
         terminals[terminal_id]['current_payload'] = {
