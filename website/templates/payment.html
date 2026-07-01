@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Оплата {{ amount }} ₽ - СберЭкран{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="sber-bar"></div>
+  <div class="icon-wrap green">
+    <svg width="46" height="46" viewBox="0 0 46 46" fill="none">
+      <rect x="4" y="10" width="38" height="26" rx="6" stroke="#21A038" stroke-width="3"/>
+      <path d="M4 18H42" stroke="#21A038" stroke-width="3"/>
+      <rect x="10" y="25" width="10" height="4" rx="2" fill="#21A038"/>
+      <rect x="26" y="25" width="10" height="4" rx="2" fill="#21A038" fill-opacity="0.4"/>
+    </svg>
+  </div>
+  <h1>Подтвердите оплату</h1>
+  <p>Терминал <span class="tid">{{ terminal_id }}</span> ожидает подтверждения платежа.</p>
+  <button onclick="confirmPayment()" class="btn" id="payBtn">
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M9 2L16 9L9 16M2 9h14" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Оплатить через СберПей
+  </button>
+  <script>
+    async function confirmPayment() {
+      const btn = document.getElementById('payBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" stroke-width="2" stroke-dasharray="60" stroke-dashoffset="15"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/></circle></svg> Обработка...';
+      
+      try {
+        const response = await fetch('https://sberpos-api.onrender.com/api/qr/confirm', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            terminal_id: '{{ terminal_id }}',
+            key: '{{ key }}',
+            approved: true
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          btn.style.background = 'linear-gradient(135deg, #21A038 0%, #1a7f2c 100%)';
+          btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg> Оплата подтверждена!';
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 2000);
+        } else {
+          btn.style.background = 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)';
+          btn.innerHTML = '❌ ' + (data.error || 'Ошибка оплаты');
+          btn.disabled = false;
+          setTimeout(() => {
+            btn.style.background = 'linear-gradient(135deg, #21A038 0%, #1a7f2c 100%)';
+            btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2L16 9L9 16M2 9h14" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Оплатить через СберПей';
+          }, 3000);
+        }
+      } catch (error) {
+        btn.style.background = 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)';
+        btn.innerHTML = '❌ Ошибка соединения';
+        btn.disabled = false;
+      }
+    }
+  </script>
+  <div class="sber-logo">
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <circle cx="11" cy="11" r="11" fill="#21A038"/>
+      <path d="M6 11.5C6 8.462 8.462 6 11.5 6a5.47 5.47 0 013.88 1.607l1.39-1.39A7.47 7.47 0 0011.5 4C7.358 4 4 7.358 4 11.5S7.358 19 11.5 19c3.166 0 5.88-1.963 7.037-4.768H16.2A5.504 5.504 0 0111.5 17C8.462 17 6 14.538 6 11.5z" fill="white"/>
+    </svg>
+    <span>СберЭкран</span>
+  </div>
+</div>
+{% endblock %}

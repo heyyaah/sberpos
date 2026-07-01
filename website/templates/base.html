@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}СберЭкран{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --green: #21A038;
+            --green-light: #E8F5EC;
+            --red: #E5383B;
+            --red-light: #FDECEA;
+            --yellow: #F5A623;
+            --yellow-light: #FEF6E7;
+            --bg: #F2F4F7;
+            --card: #FFFFFF;
+            --text: #1A1A2E;
+            --muted: #6B7280;
+            --border: #E5E7EB;
+            --radius: 24px;
+            --shadow: 0 8px 40px rgba(0,0,0,0.10);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Manrope', -apple-system, sans-serif;
+            background: var(--bg);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 60% at 10% 0%, rgba(33,160,56,0.07) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 40% at 90% 100%, rgba(19,70,163,0.06) 0%, transparent 60%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 48px 40px 40px;
+            max-width: 420px;
+            width: 100%;
+            text-align: center;
+            box-shadow: var(--shadow);
+            position: relative;
+            z-index: 1;
+            animation: fadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(28px) scale(0.98); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .sber-bar {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 5px;
+            border-radius: var(--radius) var(--radius) 0 0;
+            background: linear-gradient(90deg, #21A038 0%, #2DC653 100%);
+        }
+
+        .icon-wrap {
+            width: 88px;
+            height: 88px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 28px;
+        }
+        .icon-wrap.red    { background: var(--red-light); }
+        .icon-wrap.yellow { background: var(--yellow-light); }
+        .icon-wrap.green  { background: var(--green-light); }
+
+        .icon-wrap svg {
+            animation: iconPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both;
+        }
+        @keyframes iconPop {
+            from { transform: scale(0.4); opacity: 0; }
+            to   { transform: scale(1);   opacity: 1; }
+        }
+
+        h1 {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--text);
+            margin-bottom: 12px;
+            letter-spacing: -0.3px;
+        }
+
+        p {
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.65;
+            font-weight: 500;
+        }
+
+        .tid {
+            display: inline-block;
+            background: #F3F4F6;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 2px 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: var(--text);
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            margin-top: 8px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 28px;
+            padding: 13px 28px;
+            border-radius: 14px;
+            font-size: 15px;
+            font-weight: 700;
+            font-family: 'Manrope', sans-serif;
+            cursor: pointer;
+            border: none;
+            text-decoration: none;
+            background: linear-gradient(135deg, #21A038, #2DC653);
+            color: white;
+            box-shadow: 0 4px 16px rgba(33,160,56,0.30);
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(33,160,56,0.35);
+        }
+
+        .sber-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 28px;
+            opacity: 0.45;
+        }
+        .sber-logo span {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: 0.3px;
+        }
+    </style>
+</head>
+<body>
+    {% block content %}{% endblock %}
+</body>
+</html>
